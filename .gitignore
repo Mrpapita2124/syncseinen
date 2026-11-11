@@ -1,0 +1,14 @@
+# Dependencias
+node_modules/
+
+# Carpetas de compilación y ejecutables
+release/
+releases/
+dist/
+dist-electron/
+resources/bin/
+
+# Logs y archivos del sistema
+*.log
+.DS_Store
+Thumbs.db
