@@ -1,7 +1,7 @@
 # Dependencias
 node_modules/
 
-# Carpetas de compilación y ejecutables
+# Carpetas de compilaciÃ³n y ejecutables
 release/
 releases/
 dist/
@@ -12,3 +12,4 @@ resources/bin/
 *.log
 .DS_Store
 Thumbs.db
+
