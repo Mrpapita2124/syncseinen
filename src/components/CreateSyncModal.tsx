@@ -1,8 +1,10 @@
 import React, { useState } from 'react'
 import {
+  CheckCircle2,
   Cloud,
   EyeOff,
   FolderOpen,
+  FolderPlus,
   HardDrive,
   ImagePlus,
   Loader2,
@@ -43,9 +45,21 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
   const [coverImage, setCoverImage] = useState<string | null>(null)
   const [isDrivePickerOpen, setIsDrivePickerOpen] = useState(false)
   const [isIgnoreModalOpen, setIsIgnoreModalOpen] = useState(false)
+  const [creatingSubfolder, setCreatingSubfolder] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   if (!isOpen) return null
+
+  const localFolderName = localPath
+    ? localPath.split(/[/\\]/).filter(Boolean).pop() || ''
+    : ''
+
+  const driveEndsWithLocalName = Boolean(
+    localFolderName &&
+      driveFolder &&
+      (driveFolder.path.split('/').filter(Boolean).pop() || '').toLowerCase() ===
+        localFolderName.toLowerCase()
+  )
 
   const handlePickLocal = async () => {
     const picked = await window.syncApi.pickLocalFolder()
@@ -58,6 +72,28 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
           setName(parts[parts.length - 1])
         }
       }
+    }
+  }
+
+  const handleCreateAutoSubfolderInDrive = async () => {
+    if (!localFolderName) return
+    setCreatingSubfolder(true)
+    setError(null)
+    try {
+      const parentPath = driveFolder ? driveFolder.path : ''
+      const created = await window.syncApi.createDriveFolder(localFolderName, parentPath)
+      setDriveFolder({
+        path: created.path,
+        name: created.name,
+      })
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : `No se pudo crear la carpeta "${localFolderName}" en Google Drive`
+      )
+    } finally {
+      setCreatingSubfolder(false)
     }
   }
 
@@ -222,7 +258,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                 disabled={isCreating}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ej. Partidas Guardadas, Proyectos, Configuraciones..."
+                placeholder="Ej. Programación Web, Partidas Guardadas, Proyectos..."
                 className="w-full liquid-glass-sub rounded-xl px-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50 disabled:opacity-60"
               />
             </div>
@@ -286,7 +322,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                 />
                 <button
                   type="button"
-                  disabled={isCreating}
+                  disabled={isCreating || creatingSubfolder}
                   onClick={() => setIsDrivePickerOpen(true)}
                   className="px-4 py-2.5 rounded-xl liquid-glass hover:opacity-90 disabled:opacity-50 liquid-text-primary text-sm font-semibold flex items-center gap-2 transition flex-shrink-0"
                 >
@@ -294,6 +330,45 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   Elegir en Drive
                 </button>
               </div>
+
+              {/* Opción rápida para crear y añadir automáticamente una subcarpeta con el nombre de la carpeta de la PC */}
+              {localFolderName && (
+                <div className="mt-2.5 liquid-glass-sub rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 border border-emerald-400/25">
+                  {driveEndsWithLocalName ? (
+                    <div className="flex items-center gap-2 text-xs text-emerald-300 font-medium">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                      <span>
+                        Subcarpeta automática lista en Drive:{' '}
+                        <code className="font-mono font-bold text-emerald-300">
+                          /{driveFolder?.path}
+                        </code>
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-xs liquid-text-secondary flex-1 min-w-[200px]">
+                        ¿Guardar dentro de una carpeta llamada{' '}
+                        <strong className="text-emerald-300">«{localFolderName}»</strong> en{' '}
+                        {driveFolder ? `/${driveFolder.path}` : 'Mi unidad'}?
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isCreating || creatingSubfolder}
+                        onClick={handleCreateAutoSubfolderInDrive}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/35 border border-emerald-400/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition flex-shrink-0"
+                      >
+                        {creatingSubfolder ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <FolderPlus className="w-3.5 h-3.5" />
+                        )}
+                        Crear «/{driveFolder ? `${driveFolder.path}/${localFolderName}` : localFolderName}»
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
               <p className="text-xs liquid-text-muted mt-2 leading-relaxed">
                 Los archivos se sincronizarán vía <strong>rclone</strong> en la carpeta elegida, mientras que en <code className="text-sky-400 font-mono">_SyncSeinen_Metadata</code> se guardará la metadata y la carátula.
               </p>
@@ -315,7 +390,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isCreating || !name.trim() || !driveFolder || !localPath}
+                disabled={isCreating || creatingSubfolder || !name.trim() || !driveFolder || !localPath}
                 className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:via-sky-400 hover:to-emerald-400 disabled:opacity-50 text-white text-sm font-bold flex items-center gap-2 transition shadow-lg shadow-sky-500/25"
               >
                 {isCreating ? (
@@ -337,6 +412,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
 
       <DriveFolderModal
         isOpen={isDrivePickerOpen}
+        localFolderName={localFolderName}
         onClose={() => setIsDrivePickerOpen(false)}
         onSelect={(folder) => {
           setDriveFolder(folder)

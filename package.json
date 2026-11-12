@@ -1,6 +1,6 @@
 {
   "name": "sync-seinen",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Aplicación multiplataforma (Windows y Linux) para sincronizar carpetas entre dispositivos usando Google Drive y rclone",
   "main": "dist-electron/main.js",
