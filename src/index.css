@@ -2,21 +2,113 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-base: #050814;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --glass-bg: rgba(15, 23, 42, 0.48);
+  --glass-bg-hover: rgba(30, 41, 59, 0.58);
+  --glass-sub-bg: rgba(9, 14, 28, 0.52);
+  --glass-modal-bg: rgba(12, 19, 36, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border-strong: rgba(255, 255, 255, 0.24);
+  --glass-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.55), inset 0 1px 1px 0 rgba(255, 255, 255, 0.22), inset 0 -1px 1px 0 rgba(255, 255, 255, 0.05);
+  --glass-sub-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.12), 0 4px 12px rgba(0, 0, 0, 0.25);
+  --orb-1: rgba(56, 189, 248, 0.24);
+  --orb-2: rgba(99, 102, 241, 0.24);
+  --orb-3: rgba(16, 185, 129, 0.16);
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+}
+
+/* Liquid Glass Surfaces */
+.liquid-glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.liquid-glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(26px) saturate(190%);
+  -webkit-backdrop-filter: blur(26px) saturate(190%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+}
+
+.liquid-glass-card:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--glass-border-strong);
+  transform: translateY(-2px);
+}
+
+.liquid-glass-sub {
+  background: var(--glass-sub-bg);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-sub-shadow);
+}
+
+.liquid-glass-modal {
+  background: var(--glass-modal-bg);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  border: 1px solid var(--glass-border-strong);
+  box-shadow: var(--glass-shadow);
+}
+
+.liquid-text-primary {
+  color: var(--text-primary);
+}
+
+.liquid-text-secondary {
+  color: var(--text-secondary);
+}
+
+.liquid-text-muted {
+  color: var(--text-muted);
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  50% {
+    transform: translate(30px, -25px) scale(1.06);
+  }
+}
+
+.animate-orb-1 {
+  animation: floatSlow 14s ease-in-out infinite;
+}
+
+.animate-orb-2 {
+  animation: floatSlow 18s ease-in-out infinite reverse;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #090d16;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: rgba(148, 163, 184, 0.35);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: rgba(148, 163, 184, 0.55);
 }
-

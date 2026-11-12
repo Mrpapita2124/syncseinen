@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -20,19 +20,48 @@ export interface SyncMetadata {
   lastPushedAt: string | null
   lastPushedByDevice: string | null
   lastPushedFileCount: number
+  ignoredPaths?: string[]
+  coverImage?: string | null
 }
 
 export interface LocalSyncMapping {
   localPath: string
   lastPulledAt?: string
   lastPushedAt?: string
+  ignoredPaths?: string[]
+}
+
+export interface FolderEntryItem {
+  name: string
+  relPath: string
+  isDir: boolean
+  size?: number
 }
 
 export interface AppConfig {
   deviceName: string
   isConnected: boolean
   rcloneVersion?: string
+  appVersion?: string
+  viewMode?: 'grid' | 'list'
   localMappings: Record<string, LocalSyncMapping>
+}
+
+export interface UpdateCheckResult {
+  hasUpdate: boolean
+  currentVersion: string
+  latestVersion: string
+  releaseName: string
+  releaseNotes: string
+  publishedAt: string
+  htmlUrl: string
+  downloadUrl: string | null
+  assetName: string | null
+}
+
+export interface UpdateProgressEvent {
+  percent: number
+  phase: string
 }
 
 export interface SyncProgressEvent {
@@ -55,6 +84,289 @@ const CONFIG_FILENAME = 'syncseinen-config.json'
 const RCLONE_CONF_FILENAME = 'rclone.conf'
 const REMOTE_NAME = 'syncseinen'
 const METADATA_FOLDER_NAME = '_SyncSeinen_Metadata'
+const GITHUB_REPO = 'Mrpapita2124/syncseinen'
+
+function isNewerSemver(latest: string, current: string): boolean {
+  const cleanLatest = latest.replace(/^v/i, '').trim().split('-')[0]
+  const cleanCurrent = current.replace(/^v/i, '').trim().split('-')[0]
+  const lParts = cleanLatest.split('.').map((n) => parseInt(n, 10) || 0)
+  const cParts = cleanCurrent.split('.').map((n) => parseInt(n, 10) || 0)
+  const len = Math.max(lParts.length, cParts.length)
+  for (let i = 0; i < len; i++) {
+    const l = lParts[i] || 0
+    const c = cParts[i] || 0
+    if (l > c) return true
+    if (l < c) return false
+  }
+  return false
+}
+
+function fetchJsonFromUrl(url: string): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        headers: {
+          'User-Agent': 'SyncSeinen-AutoUpdater',
+          Accept: 'application/vnd.github+json',
+        },
+      },
+      (res) => {
+        if (
+          res.statusCode &&
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
+          fetchJsonFromUrl(res.headers.location).then(resolve).catch(reject)
+          return
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode}`))
+          return
+        }
+        let body = ''
+        res.on('data', (chunk) => {
+          body += chunk.toString()
+        })
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(body))
+          } catch (e) {
+            reject(e)
+          }
+        })
+      }
+    )
+    req.on('error', reject)
+  })
+}
+
+function downloadFileWithProgress(
+  url: string,
+  destPath: string,
+  onProgress?: (percent: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        headers: {
+          'User-Agent': 'SyncSeinen-AutoUpdater',
+        },
+      },
+      (response) => {
+        if (
+          response.statusCode &&
+          response.statusCode >= 300 &&
+          response.statusCode < 400 &&
+          response.headers.location
+        ) {
+          downloadFileWithProgress(response.headers.location, destPath, onProgress)
+            .then(resolve)
+            .catch(reject)
+          return
+        }
+        if (response.statusCode !== 200) {
+          reject(new Error(`Error descargando actualización (HTTP ${response.statusCode})`))
+          return
+        }
+
+        const totalBytes = parseInt(response.headers['content-length'] || '0', 10)
+        let downloadedBytes = 0
+
+        const file = fs.createWriteStream(destPath)
+        response.on('data', (chunk: Buffer) => {
+          downloadedBytes += chunk.length
+          if (totalBytes > 0 && onProgress) {
+            const pct = Math.min(99, Math.round((downloadedBytes / totalBytes) * 100))
+            onProgress(pct)
+          }
+        })
+
+        response.pipe(file)
+        file.on('finish', () => {
+          file.close()
+          if (onProgress) onProgress(100)
+          resolve()
+        })
+        file.on('error', (err) => {
+          fs.unlink(destPath, () => {})
+          reject(err)
+        })
+      }
+    )
+    req.on('error', (err) => reject(err))
+  })
+}
+
+async function checkGitHubUpdates(): Promise<UpdateCheckResult> {
+  const currentVersion = app.getVersion()
+  try {
+    const data = await fetchJsonFromUrl(
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
+    )
+    const tagName = String(data.tag_name || '')
+    const latestVersion = tagName.replace(/^v/i, '').trim() || currentVersion
+    const hasUpdate = isNewerSemver(latestVersion, currentVersion)
+
+    const assets = Array.isArray(data.assets)
+      ? (data.assets as Array<{ name: string; browser_download_url: string }>)
+      : []
+
+    let selectedAsset: { name: string; browser_download_url: string } | undefined
+
+    if (process.platform === 'linux') {
+      selectedAsset =
+        assets.find((a) => a.name.toLowerCase().endsWith('.appimage')) || assets[0]
+    } else {
+      const isPortable = Boolean(process.env.PORTABLE_EXECUTABLE_FILE)
+      if (isPortable) {
+        selectedAsset =
+          assets.find((a) => a.name.toLowerCase().endsWith('.exe')) ||
+          assets.find((a) => a.name.toLowerCase().endsWith('.zip'))
+      } else {
+        selectedAsset =
+          assets.find((a) => a.name.toLowerCase().endsWith('.zip')) ||
+          assets.find((a) => a.name.toLowerCase().endsWith('.exe'))
+      }
+    }
+
+    return {
+      hasUpdate,
+      currentVersion,
+      latestVersion,
+      releaseName: String(data.name || `SyncSeinen v${latestVersion}`),
+      releaseNotes: String(data.body || 'Mejoras de rendimiento y estabilidad.'),
+      publishedAt: String(data.published_at || ''),
+      htmlUrl: String(data.html_url || `https://github.com/${GITHUB_REPO}/releases`),
+      downloadUrl: selectedAsset?.browser_download_url || null,
+      assetName: selectedAsset?.name || null,
+    }
+  } catch {
+    return {
+      hasUpdate: false,
+      currentVersion,
+      latestVersion: currentVersion,
+      releaseName: `SyncSeinen v${currentVersion}`,
+      releaseNotes: '',
+      publishedAt: '',
+      htmlUrl: `https://github.com/${GITHUB_REPO}/releases`,
+      downloadUrl: null,
+      assetName: null,
+    }
+  }
+}
+
+async function downloadAndApplyUpdate(
+  downloadUrl: string,
+  assetName: string,
+  onProgress: (ev: UpdateProgressEvent) => void
+): Promise<void> {
+  const safeName = assetName.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const tempDownloadPath = path.join(os.tmpdir(), `syncseinen-update-${Date.now()}-${safeName}`)
+
+  onProgress({
+    percent: 2,
+    phase: `Descargando ${assetName} desde GitHub Releases...`,
+  })
+
+  await downloadFileWithProgress(downloadUrl, tempDownloadPath, (pct) => {
+    onProgress({
+      percent: pct,
+      phase: `Descargando nueva versión (${pct}%)...`,
+    })
+  })
+
+  if (process.platform === 'win32') {
+    if (safeName.toLowerCase().endsWith('.exe')) {
+      const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
+      const batPath = path.join(os.tmpdir(), `syncseinen-updater-${Date.now()}.bat`)
+      const batContent = [
+        '@echo off',
+        'timeout /t 2 /nobreak >nul',
+        ':retry',
+        `move /y "${tempDownloadPath}" "${targetExe}" >nul 2>&1`,
+        'if errorlevel 1 (',
+        '  timeout /t 1 /nobreak >nul',
+        '  goto retry',
+        ')',
+        `start "" "${targetExe}"`,
+        'del "%~f0"',
+      ].join('\r\n')
+
+      fs.writeFileSync(batPath, batContent, 'utf-8')
+      onProgress({
+        percent: 100,
+        phase: 'Instalando y reiniciando aplicación...',
+      })
+
+      const child = spawn('cmd.exe', ['/c', batPath], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      child.unref()
+      setTimeout(() => {
+        app.quit()
+      }, 400)
+      return
+    }
+
+    if (safeName.toLowerCase().endsWith('.zip')) {
+      const extractDir = path.join(os.tmpdir(), `syncseinen-update-extracted-${Date.now()}`)
+      onProgress({
+        percent: 99,
+        phase: 'Descomprimiendo paquete de actualización...',
+      })
+      fs.mkdirSync(extractDir, { recursive: true })
+      await extract(tempDownloadPath, { dir: extractDir })
+
+      const targetDir = path.dirname(process.execPath)
+      const targetExe = process.execPath
+      const batPath = path.join(os.tmpdir(), `syncseinen-updater-${Date.now()}.bat`)
+      const batContent = [
+        '@echo off',
+        'timeout /t 2 /nobreak >nul',
+        `xcopy /s /e /y "${extractDir}\\*" "${targetDir}\\" >nul 2>&1`,
+        `start "" "${targetExe}"`,
+        `rmdir /s /q "${extractDir}" >nul 2>&1`,
+        `del /f /q "${tempDownloadPath}" >nul 2>&1`,
+        'del "%~f0"',
+      ].join('\r\n')
+
+      fs.writeFileSync(batPath, batContent, 'utf-8')
+      onProgress({
+        percent: 100,
+        phase: 'Instalando y reiniciando aplicación...',
+      })
+
+      const child = spawn('cmd.exe', ['/c', batPath], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      child.unref()
+      setTimeout(() => {
+        app.quit()
+      }, 400)
+      return
+    }
+  } else {
+    // Linux AppImage
+    fs.chmodSync(tempDownloadPath, 0o755)
+    const targetAppImage = process.env.APPIMAGE || process.execPath
+    const shCmd = `sleep 2 && mv -f "${tempDownloadPath}" "${targetAppImage}" && chmod +x "${targetAppImage}" && "${targetAppImage}" &`
+    const child = spawn('sh', ['-c', shCmd], {
+      detached: true,
+      stdio: 'ignore',
+    })
+    child.unref()
+    setTimeout(() => {
+      app.quit()
+    }, 400)
+  }
+}
 
 function getConfigPath(): string {
   return path.join(app.getPath('userData'), CONFIG_FILENAME)
@@ -537,6 +849,8 @@ class RcloneSyncService {
             lastPushedAt: parsed.lastPushedAt || null,
             lastPushedByDevice: parsed.lastPushedByDevice || null,
             lastPushedFileCount: parsed.lastPushedFileCount ?? 0,
+            ignoredPaths: Array.isArray(parsed.ignoredPaths) ? parsed.ignoredPaths : [],
+            coverImage: parsed.coverImage || null,
           }
           metadatas.push(metaItem)
           this.metadatasCache.set(metaItem.id, metaItem)
@@ -593,19 +907,153 @@ class RcloneSyncService {
     saveConfig(cfg)
   }
 
-  private countLocalFiles(dirPath: string): number {
+  public listLocalFolderContents(rootPath: string, relSubPath = ''): FolderEntryItem[] {
+    if (!rootPath || !fs.existsSync(rootPath)) return []
+    const cleanRel = relSubPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    const targetDir = cleanRel ? path.join(rootPath, ...cleanRel.split('/')) : rootPath
+    if (!fs.existsSync(targetDir)) return []
+
+    const entries = fs.readdirSync(targetDir, { withFileTypes: true })
+    const items: FolderEntryItem[] = []
+
+    for (const entry of entries) {
+      const entryRelPath = cleanRel ? `${cleanRel}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        items.push({
+          name: entry.name,
+          relPath: entryRelPath,
+          isDir: true,
+        })
+      } else if (entry.isFile()) {
+        let size = 0
+        try {
+          size = fs.statSync(path.join(targetDir, entry.name)).size
+        } catch {
+          // ignorar
+        }
+        items.push({
+          name: entry.name,
+          relPath: entryRelPath,
+          isDir: false,
+          size,
+        })
+      }
+    }
+
+    items.sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+
+    return items
+  }
+
+  public async listRemoteSyncFolderContents(
+    driveFolderPath: string,
+    relSubPath = ''
+  ): Promise<FolderEntryItem[]> {
+    const cleanBase = driveFolderPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    const cleanRel = relSubPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    const fullRemote = [cleanBase, cleanRel].filter(Boolean).join('/')
+    const remoteTarget = fullRemote ? `${REMOTE_NAME}:${fullRemote}` : `${REMOTE_NAME}:`
+
+    try {
+      const { stdout } = await this.runRclone([
+        'lsjson',
+        remoteTarget,
+        '--no-modtime',
+        '--no-mimetype',
+        '--fast-list',
+        '--drive-pacer-min-sleep',
+        '10ms',
+      ])
+      const parsed: Array<{ Name: string; IsDir: boolean; Size?: number }> = JSON.parse(stdout || '[]')
+      const items: FolderEntryItem[] = parsed
+        .filter((it) => it.Name !== METADATA_FOLDER_NAME)
+        .map((it) => ({
+          name: it.Name,
+          relPath: cleanRel ? `${cleanRel}/${it.Name}` : it.Name,
+          isDir: Boolean(it.IsDir),
+          size: it.Size,
+        }))
+
+      items.sort((a, b) => {
+        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+      return items
+    } catch {
+      return []
+    }
+  }
+
+  private isPathIgnored(relPath: string, ignoredPaths: string[]): boolean {
+    const cleanRel = relPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    for (const raw of ignoredPaths) {
+      const cleanPattern = raw.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      if (!cleanPattern) continue
+      if (cleanRel === cleanPattern || cleanRel.startsWith(`${cleanPattern}/`)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  private countLocalFiles(
+    dirPath: string,
+    rootPath = dirPath,
+    ignoredPaths: string[] = []
+  ): number {
     if (!fs.existsSync(dirPath)) return 0
     let count = 0
     const entries = fs.readdirSync(dirPath, { withFileTypes: true })
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name)
+      const relPath = path.relative(rootPath, fullPath).split(path.sep).join('/')
+      if (this.isPathIgnored(relPath, ignoredPaths)) {
+        continue
+      }
       if (entry.isDirectory()) {
-        count += this.countLocalFiles(fullPath)
+        count += this.countLocalFiles(fullPath, rootPath, ignoredPaths)
       } else if (entry.isFile()) {
         count++
       }
     }
     return count
+  }
+
+  /**
+   * Construye un archivo temporal de exclusiones para rclone (--exclude-from).
+   * Como NO se pasa --delete-excluded a rclone sync:
+   * - En Push: los archivos/carpetas ignorados NO se suben a Google Drive.
+   * - En Pull: los archivos/carpetas ignorados son completamente ignorados en ambos lados y NO se borran ni sobrescriben localmente.
+   */
+  private createTempExcludeFile(ignoredPaths: string[]): string | null {
+    const cleaned = Array.from(
+      new Set(
+        ignoredPaths
+          .map((p) => p.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+          .filter(Boolean)
+      )
+    )
+    if (cleaned.length === 0) return null
+
+    const lines: string[] = []
+    for (const item of cleaned) {
+      if (!item.includes('/') && (item.includes('*') || item.includes('?'))) {
+        lines.push(item)
+      } else {
+        lines.push(`/${item}`)
+        lines.push(`/${item}/**`)
+      }
+    }
+
+    const tempExcludePath = path.join(
+      os.tmpdir(),
+      `syncseinen-exclude-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`
+    )
+    fs.writeFileSync(tempExcludePath, lines.join('\n') + '\n', { encoding: 'utf-8' })
+    return tempExcludePath
   }
 
   private async runRcloneSyncWithProgress(params: {
@@ -614,9 +1062,11 @@ class RcloneSyncService {
     operation: 'push' | 'pull'
     source: string
     destination: string
+    ignoredPaths?: string[]
   }): Promise<void> {
     const bin = await this.ensureRcloneBinary()
     const confPath = getRcloneConfigPath()
+    const tempExcludeFile = this.createTempExcludeFile(params.ignoredPaths || [])
 
     const args = [
       'sync',
@@ -624,6 +1074,7 @@ class RcloneSyncService {
       params.destination,
       '--create-empty-src-dirs',
       ...this.getSpeedFlags(),
+      ...(tempExcludeFile ? ['--exclude-from', tempExcludeFile] : []),
       '--stats',
       '300ms',
       '--stats-one-line',
@@ -632,48 +1083,105 @@ class RcloneSyncService {
       confPath,
     ]
 
-    return new Promise((resolve, reject) => {
-      const child = spawn(bin, args, { windowsHide: true })
-      let stderrLog = ''
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(bin, args, { windowsHide: true })
+        let stderrLog = ''
 
-      const parseProgressLine = (text: string) => {
-        const lines = text.split(/\r?\n/).filter(Boolean)
-        for (const line of lines) {
-          const percentMatch = line.match(/(\d+)%/)
-          const pct = percentMatch ? parseInt(percentMatch[1], 10) : undefined
-          const cleanDetail = line.replace(/^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\s+(INFO|NOTICE)\s*:\s*/, '').trim()
+        const parseProgressLine = (text: string) => {
+          const lines = text.split(/\r?\n/).filter(Boolean)
+          for (const line of lines) {
+            const percentMatch = line.match(/(\d+)%/)
+            const pct = percentMatch ? parseInt(percentMatch[1], 10) : undefined
+            const cleanDetail = line
+              .replace(/^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\s+(INFO|NOTICE)\s*:\s*/, '')
+              .trim()
 
-          this.emitProgress({
-            syncId: params.syncId,
-            syncName: params.syncName,
-            operation: params.operation,
-            phase:
-              params.operation === 'push'
-                ? 'Sincronizando archivos hacia Google Drive con rclone...'
-                : 'Descargando archivos desde Google Drive con rclone...',
-            current: pct !== undefined ? pct : 50,
-            total: 100,
-            detail: cleanDetail.slice(0, 90),
-          })
+            this.emitProgress({
+              syncId: params.syncId,
+              syncName: params.syncName,
+              operation: params.operation,
+              phase:
+                params.operation === 'push'
+                  ? 'Sincronizando archivos hacia Google Drive con rclone...'
+                  : 'Descargando archivos desde Google Drive con rclone...',
+              current: pct !== undefined ? pct : 50,
+              total: 100,
+              detail: cleanDetail.slice(0, 90),
+            })
+          }
+        }
+
+        child.stdout.on('data', (chunk: Buffer) => parseProgressLine(chunk.toString()))
+        child.stderr.on('data', (chunk: Buffer) => {
+          const str = chunk.toString()
+          stderrLog += str
+          parseProgressLine(str)
+        })
+
+        child.on('error', (err) => reject(err))
+        child.on('close', (code) => {
+          if (code === 0) {
+            resolve()
+          } else {
+            reject(new Error(stderrLog.trim() || `rclone sync terminó con código ${code}`))
+          }
+        })
+      })
+    } finally {
+      if (tempExcludeFile) {
+        try {
+          fs.unlinkSync(tempExcludeFile)
+        } catch {
+          // ignorar
         }
       }
+    }
+  }
 
-      child.stdout.on('data', (chunk: Buffer) => parseProgressLine(chunk.toString()))
-      child.stderr.on('data', (chunk: Buffer) => {
-        const str = chunk.toString()
-        stderrLog += str
-        parseProgressLine(str)
-      })
+  public async updateIgnoredPaths(syncId: string, ignoredPaths: string[]): Promise<SyncMetadata> {
+    const cleanPaths = Array.from(
+      new Set(
+        ignoredPaths
+          .map((p) => p.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+          .filter(Boolean)
+      )
+    )
 
-      child.on('error', (err) => reject(err))
-      child.on('close', (code) => {
-        if (code === 0) {
-          resolve()
-        } else {
-          reject(new Error(stderrLog.trim() || `rclone sync terminó con código ${code}`))
-        }
-      })
-    })
+    let meta = this.metadatasCache.get(syncId)
+    if (!meta) {
+      const allMetas = await this.listSyncMetadatas()
+      meta = allMetas.find((m) => m.id === syncId)
+    }
+    if (!meta) {
+      throw new Error('No se encontró la metadata de esta sincronización en Google Drive.')
+    }
+
+    meta.ignoredPaths = cleanPaths
+    await this.saveSyncMetadataToDrive(meta)
+
+    const cfg = loadConfig()
+    if (cfg.localMappings[syncId]) {
+      cfg.localMappings[syncId].ignoredPaths = cleanPaths
+      saveConfig(cfg)
+    }
+
+    return meta
+  }
+
+  public async updateCoverImage(syncId: string, coverImage: string | null): Promise<SyncMetadata> {
+    let meta = this.metadatasCache.get(syncId)
+    if (!meta) {
+      const allMetas = await this.listSyncMetadatas()
+      meta = allMetas.find((m) => m.id === syncId)
+    }
+    if (!meta) {
+      throw new Error('No se encontró la metadata de esta sincronización en Google Drive.')
+    }
+
+    meta.coverImage = coverImage
+    await this.saveSyncMetadataToDrive(meta)
+    return meta
   }
 
   public async createSyncAndInitialPush(params: {
@@ -681,10 +1189,19 @@ class RcloneSyncService {
     driveFolderPath: string
     driveFolderName: string
     localPath: string
+    ignoredPaths?: string[]
+    coverImage?: string | null
   }): Promise<SyncMetadata> {
     const cfg = loadConfig()
     const syncId = crypto.randomUUID()
     const now = new Date().toISOString()
+    const cleanIgnored = Array.from(
+      new Set(
+        (params.ignoredPaths || [])
+          .map((p) => p.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+          .filter(Boolean)
+      )
+    )
 
     const newMeta: SyncMetadata = {
       id: syncId,
@@ -696,10 +1213,13 @@ class RcloneSyncService {
       lastPushedAt: null,
       lastPushedByDevice: null,
       lastPushedFileCount: 0,
+      ignoredPaths: cleanIgnored,
+      coverImage: params.coverImage || null,
     }
 
     cfg.localMappings[syncId] = {
       localPath: params.localPath,
+      ignoredPaths: cleanIgnored,
     }
     saveConfig(cfg)
 
@@ -709,7 +1229,7 @@ class RcloneSyncService {
 
   /**
    * PUSH: Usa rclone sync para subir el contenido de la carpeta local a la carpeta elegida de Google Drive,
-   * y actualiza el JSON de metadata en _SyncSeinen_Metadata con el nombre de este dispositivo y fecha/hora.
+   * ignorando las rutas configuradas en ignoredPaths, y actualiza el JSON de metadata en _SyncSeinen_Metadata.
    */
   public async pushSync(syncId: string): Promise<SyncMetadata> {
     const cfg = loadConfig()
@@ -731,7 +1251,12 @@ class RcloneSyncService {
       throw new Error('No se encontró la metadata de esta sincronización en Google Drive.')
     }
 
-    const fileCount = this.countLocalFiles(mapping.localPath)
+    const effectiveIgnored = Array.from(
+      new Set([...(meta.ignoredPaths || []), ...(mapping.ignoredPaths || [])])
+    )
+    meta.ignoredPaths = effectiveIgnored
+
+    const fileCount = this.countLocalFiles(mapping.localPath, mapping.localPath, effectiveIgnored)
     const remoteDest = meta.driveFolderPath
       ? `${REMOTE_NAME}:${meta.driveFolderPath}`
       : `${REMOTE_NAME}:`
@@ -751,6 +1276,7 @@ class RcloneSyncService {
       operation: 'push',
       source: mapping.localPath,
       destination: remoteDest,
+      ignoredPaths: effectiveIgnored,
     })
 
     const pushedAt = new Date().toISOString()
@@ -772,6 +1298,7 @@ class RcloneSyncService {
     cfg.localMappings[syncId] = {
       ...cfg.localMappings[syncId],
       lastPushedAt: pushedAt,
+      ignoredPaths: effectiveIgnored,
     }
     saveConfig(cfg)
 
@@ -780,7 +1307,7 @@ class RcloneSyncService {
 
   /**
    * PULL: Usa rclone sync para descargar los archivos de la carpeta de Google Drive hacia el directorio local
-   * asignado en esta computadora.
+   * asignado en esta computadora, ignorando las rutas en ignoredPaths para que NO se descarguen ni se borren localmente.
    */
   public async pullSync(syncId: string): Promise<SyncMetadata> {
     const cfg = loadConfig()
@@ -801,6 +1328,10 @@ class RcloneSyncService {
       throw new Error('No se encontró la metadata de la sincronización en Google Drive.')
     }
 
+    const effectiveIgnored = Array.from(
+      new Set([...(meta.ignoredPaths || []), ...(mapping.ignoredPaths || [])])
+    )
+
     const remoteSource = meta.driveFolderPath
       ? `${REMOTE_NAME}:${meta.driveFolderPath}`
       : `${REMOTE_NAME}:`
@@ -820,12 +1351,14 @@ class RcloneSyncService {
       operation: 'pull',
       source: remoteSource,
       destination: mapping.localPath,
+      ignoredPaths: effectiveIgnored,
     })
 
     const pulledAt = new Date().toISOString()
     cfg.localMappings[syncId] = {
       ...cfg.localMappings[syncId],
       lastPulledAt: pulledAt,
+      ignoredPaths: effectiveIgnored,
     }
     saveConfig(cfg)
 
@@ -886,6 +1419,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('config:get', async () => {
     const cfg = loadConfig()
+    cfg.appVersion = app.getVersion()
     try {
       cfg.rcloneVersion = await rcloneService!.getVersion()
     } catch {
@@ -899,6 +1433,67 @@ app.whenReady().then(() => {
     cfg.deviceName = name.trim() || cfg.deviceName
     saveConfig(cfg)
     return cfg
+  })
+
+  ipcMain.handle(
+    'config:setPreferences',
+    async (_e, prefs: { viewMode?: 'grid' | 'list' }) => {
+      const cfg = loadConfig()
+      if (prefs.viewMode) cfg.viewMode = prefs.viewMode
+      saveConfig(cfg)
+      return cfg
+    }
+  )
+
+  ipcMain.handle('update:check', async () => {
+    return await checkGitHubUpdates()
+  })
+
+  ipcMain.handle(
+    'update:downloadAndInstall',
+    async (_e, params: { downloadUrl: string; assetName: string }) => {
+      await downloadAndApplyUpdate(params.downloadUrl, params.assetName, (ev) => {
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('update:progress', ev)
+        }
+      })
+      return true
+    }
+  )
+
+  ipcMain.handle('dialog:pickCoverImage', async () => {
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Seleccionar imagen de carátula para la sincronización',
+      filters: [
+        {
+          name: 'Imágenes',
+          extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'],
+        },
+      ],
+      properties: ['openFile'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    const filePath = result.filePaths[0]
+
+    const img = nativeImage.createFromPath(filePath)
+    if (img.isEmpty()) {
+      // Fallback: leer directamente como base64 si nativeImage no reconoce algún formato como webp
+      const ext = path.extname(filePath).toLowerCase().replace('.', '') || 'jpeg'
+      const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+      const rawBuf = fs.readFileSync(filePath)
+      return `data:${mime};base64,${rawBuf.toString('base64')}`
+    }
+
+    const size = img.getSize()
+    const maxWidth = 640
+    const resized =
+      size.width > maxWidth
+        ? img.resize({ width: maxWidth, quality: 'good' })
+        : img
+
+    const jpegBuf = resized.toJPEG(82)
+    return `data:image/jpeg;base64,${jpegBuf.toString('base64')}`
   })
 
   ipcMain.handle('auth:login', async () => {
@@ -947,9 +1542,52 @@ app.whenReady().then(() => {
     'sync:create',
     async (
       _e,
-      params: { name: string; driveFolderPath: string; driveFolderName: string; localPath: string }
+      params: {
+        name: string
+        driveFolderPath: string
+        driveFolderName: string
+        localPath: string
+        ignoredPaths?: string[]
+        coverImage?: string | null
+      }
     ) => {
       const meta = await rcloneService!.createSyncAndInitialPush(params)
+      return {
+        meta,
+        config: loadConfig(),
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'sync:updateCoverImage',
+    async (_e, syncId: string, coverImage: string | null) => {
+      const meta = await rcloneService!.updateCoverImage(syncId, coverImage)
+      return {
+        meta,
+        config: loadConfig(),
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'local:listFolderContents',
+    async (_e, rootPath: string, relSubPath = '') => {
+      return rcloneService!.listLocalFolderContents(rootPath, relSubPath)
+    }
+  )
+
+  ipcMain.handle(
+    'drive:listSyncFolderContents',
+    async (_e, driveFolderPath: string, relSubPath = '') => {
+      return await rcloneService!.listRemoteSyncFolderContents(driveFolderPath, relSubPath)
+    }
+  )
+
+  ipcMain.handle(
+    'sync:updateIgnoredPaths',
+    async (_e, syncId: string, ignoredPaths: string[]) => {
+      const meta = await rcloneService!.updateIgnoredPaths(syncId, ignoredPaths)
       return {
         meta,
         config: loadConfig(),
