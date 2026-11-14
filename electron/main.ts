@@ -15,6 +15,9 @@ export type CloudProvider = 'gdrive' | 'dropbox' | 'onedrive'
 export interface SyncMetadata {
   id: string
   provider?: CloudProvider
+  isGameSave?: boolean
+  emulatorName?: string | null
+  systemName?: string | null
   name: string
   driveFolderPath: string
   driveFolderName: string
@@ -25,6 +28,28 @@ export interface SyncMetadata {
   lastPushedFileCount: number
   ignoredPaths?: string[]
   coverImage?: string | null
+}
+
+export interface AutoDetectedSaveMatch {
+  syncId: string
+  localPath: string
+  ignoredPaths?: string[]
+  emulatorName?: string | null
+  systemName?: string | null
+  matchType: 'exact-save' | 'emulator-root' | 'ludusavi-path'
+}
+
+export interface DetectedGameSaveItem {
+  id: string
+  name: string
+  steamId: number | null
+  localPath: string
+  ignoredPaths: string[]
+  coverUrl: string | null
+  thumbUrl: string | null
+  source?: 'ludusavi' | 'emuvault' | 'emuatlas'
+  emulatorName?: string | null
+  systemName?: string | null
 }
 
 export interface LocalSyncMapping {
@@ -90,6 +115,10 @@ const CONFIG_FILENAME = 'syncseinen-config.json'
 const RCLONE_CONF_FILENAME = 'rclone.conf'
 const REMOTE_NAME = 'syncseinen'
 const METADATA_FOLDER_NAME = '_SyncSeinen_Metadata'
+const GAME_SAVES_ROOT_FOLDER = 'SyncSeinen_games_saves'
+const STEAMGRIDDB_API_KEY = 'ac4b064580cac55b3050b8b2f4d42a73'
+const LUDUSAVI_MANIFEST_URL =
+  'https://raw.githubusercontent.com/mtkennerly/ludusavi-manifest/master/data/manifest.yaml'
 const GITHUB_REPO = 'Mrpapita2124/syncseinen'
 
 const ALL_PROVIDERS: CloudProvider[] = ['gdrive', 'dropbox', 'onedrive']
@@ -1331,9 +1360,18 @@ class RcloneSyncService {
                 driveFolderPath.split('/').filter(Boolean).pop() ||
                 driveFolderPath
 
+              const isGameSave = Boolean(
+                parsed.isGameSave ||
+                  (typeof driveFolderPath === 'string' &&
+                    driveFolderPath.startsWith(`${GAME_SAVES_ROOT_FOLDER}/`))
+              )
+
               const metaItem: SyncMetadata = {
                 id: parsed.id,
                 provider,
+                isGameSave,
+                emulatorName: parsed.emulatorName || null,
+                systemName: parsed.systemName || null,
                 name: parsed.name,
                 driveFolderPath,
                 driveFolderName,
@@ -1709,6 +1747,9 @@ class RcloneSyncService {
     localPath: string
     ignoredPaths?: string[]
     coverImage?: string | null
+    isGameSave?: boolean
+    emulatorName?: string | null
+    systemName?: string | null
   }): Promise<SyncMetadata> {
     const cfg = loadConfig()
     const syncId = crypto.randomUUID()
@@ -1725,6 +1766,9 @@ class RcloneSyncService {
     const newMeta: SyncMetadata = {
       id: syncId,
       provider,
+      isGameSave: Boolean(params.isGameSave),
+      emulatorName: params.emulatorName || null,
+      systemName: params.systemName || null,
       name: params.name.trim(),
       driveFolderPath: params.driveFolderPath,
       driveFolderName: params.driveFolderName,
@@ -1894,6 +1938,2040 @@ class RcloneSyncService {
 
     return meta
   }
+}
+
+interface ParsedLudusaviFileRule {
+  pattern: string
+  tags: string[]
+  osList: string[]
+}
+
+interface ParsedLudusaviGame {
+  name: string
+  steamId: number | null
+  files: ParsedLudusaviFileRule[]
+  installDirs: string[]
+}
+
+interface MatchedFsItem {
+  fullPath: string
+  isDir: boolean
+  isFile: boolean
+  parentDir: string
+  name: string
+}
+
+let cachedParsedManifest: ParsedLudusaviGame[] | null = null
+
+function unquoteYamlKey(raw: string): string {
+  let s = raw.trim()
+  if (s.endsWith(':')) s = s.slice(0, -1).trim()
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    const quote = s[0]
+    s = s.slice(1, -1)
+    if (quote === '"') {
+      s = s.replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+    } else {
+      s = s.replace(/''/g, "'")
+    }
+  }
+  return s
+}
+
+async function ensureLudusaviManifestGames(): Promise<ParsedLudusaviGame[]> {
+  if (cachedParsedManifest && cachedParsedManifest.length > 0) {
+    return cachedParsedManifest
+  }
+
+  const cacheFile = path.join(app.getPath('userData'), 'ludusavi-manifest.yaml')
+  let yamlText = ''
+
+  let needDownload = !fs.existsSync(cacheFile)
+  if (!needDownload) {
+    try {
+      const stat = fs.statSync(cacheFile)
+      // Refrescar si tiene más de 48 horas
+      if (Date.now() - stat.mtimeMs > 48 * 3600 * 1000 || stat.size < 100000) {
+        needDownload = true
+      }
+    } catch {
+      needDownload = true
+    }
+  }
+
+  if (needDownload) {
+    try {
+      const res = await fetch(LUDUSAVI_MANIFEST_URL, {
+        headers: {
+          'User-Agent': 'SyncSeinen-LudusaviScanner',
+        },
+      })
+      if (res.ok) {
+        yamlText = await res.text()
+        if (yamlText.length > 100000) {
+          fs.mkdirSync(path.dirname(cacheFile), { recursive: true })
+          fs.writeFileSync(cacheFile, yamlText, 'utf-8')
+        }
+      }
+    } catch {
+      // Fallback al cache en disco si existe
+    }
+  }
+
+  if (!yamlText && fs.existsSync(cacheFile)) {
+    yamlText = fs.readFileSync(cacheFile, 'utf-8')
+  }
+
+  if (!yamlText) {
+    throw new Error(
+      'No se pudo descargar el manifest de Ludusavi. Verifica tu conexión a internet.'
+    )
+  }
+
+  const lines = yamlText.split(/\r?\n/)
+  const games: ParsedLudusaviGame[] = []
+  let currentGame: ParsedLudusaviGame | null = null
+  let section = ''
+  let currentFile: ParsedLudusaviFileRule | null = null
+  let fileSubSection = ''
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line || line === '---') continue
+    const indent = line.search(/\S/)
+    if (indent === 0) {
+      if (currentGame && currentGame.files.length > 0) games.push(currentGame)
+      currentGame = { name: unquoteYamlKey(line), steamId: null, files: [], installDirs: [] }
+      section = ''
+      currentFile = null
+    } else if (indent === 2 && currentGame) {
+      const trimmed = line.trim()
+      if (trimmed === 'files:') section = 'files'
+      else if (trimmed === 'steam:') section = 'steam'
+      else if (trimmed === 'installDir:') section = 'installDir'
+      else section = 'other'
+      currentFile = null
+    } else if (indent === 4 && currentGame) {
+      if (section === 'files') {
+        const cleaned = line.trim().replace(/:\s*\{\}\s*$/, ':')
+        currentFile = { pattern: unquoteYamlKey(cleaned), tags: [], osList: [] }
+        currentGame.files.push(currentFile)
+        fileSubSection = ''
+      } else if (section === 'steam') {
+        const m = line.trim().match(/^id:\s*(\d+)/)
+        if (m) currentGame.steamId = Number(m[1])
+      } else if (section === 'installDir') {
+        const cleaned = line.trim().replace(/:\s*\{\}\s*$/, ':')
+        const dirName = unquoteYamlKey(cleaned)
+        if (dirName) currentGame.installDirs.push(dirName)
+      }
+    } else if (indent === 6 && currentFile && section === 'files') {
+      const trimmed = line.trim()
+      if (trimmed === 'tags:') fileSubSection = 'tags'
+      else if (trimmed === 'when:') fileSubSection = 'when'
+      else fileSubSection = ''
+    } else if (indent >= 8 && currentFile && section === 'files') {
+      const trimmed = line.trim()
+      if (fileSubSection === 'tags' && trimmed.startsWith('- ')) {
+        currentFile.tags.push(trimmed.slice(2).trim())
+      } else if (fileSubSection === 'when') {
+        const m = trimmed.match(/^(?:-\s*)?os:\s*(\S+)/)
+        if (m) currentFile.osList.push(m[1])
+      }
+    }
+  }
+  if (currentGame && currentGame.files.length > 0) games.push(currentGame)
+
+  cachedParsedManifest = games
+  return games
+}
+
+function globSegmentToRegex(globSeg: string): RegExp {
+  let re = '^'
+  for (let i = 0; i < globSeg.length; i++) {
+    const c = globSeg[i]
+    if (c === '*') re += '.*'
+    else if (c === '?') re += '.'
+    else if ('+()^$.{}[]|\\'.includes(c)) re += '\\' + c
+    else re += c
+  }
+  re += '$'
+  return new RegExp(re, 'i')
+}
+
+function hasAnyRealFile(targetPath: string, maxDepth = 4): boolean {
+  if (maxDepth < 0) return false
+  try {
+    const stat = fs.statSync(targetPath)
+    if (stat.isFile()) return stat.size >= 0
+    if (stat.isDirectory()) {
+      const entries = fs.readdirSync(targetPath, { withFileTypes: true })
+      for (const e of entries) {
+        if (e.isFile()) return true
+        if (e.isDirectory() && hasAnyRealFile(path.join(targetPath, e.name), maxDepth - 1)) {
+          return true
+        }
+      }
+    }
+  } catch {
+    return false
+  }
+  return false
+}
+
+async function fetchSteamGridDbCoverForGame(
+  gameName: string,
+  steamId: number | null,
+  cacheObj: Record<string, { coverUrl: string | null; thumbUrl: string | null }>
+): Promise<{ coverUrl: string | null; thumbUrl: string | null }> {
+  const cacheKey = steamId ? `steam:${steamId}` : `name:${gameName.toLowerCase()}`
+  if (cacheObj[cacheKey] !== undefined) {
+    return cacheObj[cacheKey]
+  }
+
+  const headers = {
+    Authorization: `Bearer ${STEAMGRIDDB_API_KEY}`,
+    Accept: 'application/json',
+  }
+
+  const pickBestGrid = (
+    items: Array<{ url?: string; thumb?: string; width?: number; height?: number }>
+  ): { coverUrl: string | null; thumbUrl: string | null } | null => {
+    if (!Array.isArray(items) || items.length === 0) return null
+    // Preferir formato horizontal (banner / card header) si existe, o el primero disponible
+    const horizontal = items.find((it) => it.width && it.height && it.width > it.height)
+    const chosen = horizontal || items[0]
+    if (!chosen?.url && !chosen?.thumb) return null
+    return {
+      coverUrl: chosen.url || chosen.thumb || null,
+      thumbUrl: chosen.thumb || chosen.url || null,
+    }
+  }
+
+  try {
+    if (steamId) {
+      const r1 = await fetch(
+        `https://www.steamgriddb.com/api/v2/grids/steam/${steamId}?dimensions=460x215,920x430`,
+        { headers }
+      )
+      if (r1.ok) {
+        const j1 = (await r1.json()) as { data?: Array<any> }
+        const picked1 = pickBestGrid(j1.data || [])
+        if (picked1) {
+          cacheObj[cacheKey] = picked1
+          return picked1
+        }
+      }
+
+      const r2 = await fetch(`https://www.steamgriddb.com/api/v2/grids/steam/${steamId}`, {
+        headers,
+      })
+      if (r2.ok) {
+        const j2 = (await r2.json()) as { data?: Array<any> }
+        const picked2 = pickBestGrid(j2.data || [])
+        if (picked2) {
+          cacheObj[cacheKey] = picked2
+          return picked2
+        }
+      }
+    }
+
+    // Buscar por nombre en SteamGridDB
+    const searchRes = await fetch(
+      `https://www.steamgriddb.com/api/v2/search/autocomplete/${encodeURIComponent(gameName)}`,
+      { headers }
+    )
+    if (searchRes.ok) {
+      const searchJson = (await searchRes.json()) as { data?: Array<{ id?: number }> }
+      const firstGameId = searchJson.data?.[0]?.id
+      if (firstGameId) {
+        const gRes1 = await fetch(
+          `https://www.steamgriddb.com/api/v2/grids/game/${firstGameId}?dimensions=460x215,920x430`,
+          { headers }
+        )
+        if (gRes1.ok) {
+          const gJson1 = (await gRes1.json()) as { data?: Array<any> }
+          const pickedG1 = pickBestGrid(gJson1.data || [])
+          if (pickedG1) {
+            cacheObj[cacheKey] = pickedG1
+            return pickedG1
+          }
+        }
+
+        const gRes2 = await fetch(`https://www.steamgriddb.com/api/v2/grids/game/${firstGameId}`, {
+          headers,
+        })
+        if (gRes2.ok) {
+          const gJson2 = (await gRes2.json()) as { data?: Array<any> }
+          const pickedG2 = pickBestGrid(gJson2.data || [])
+          if (pickedG2) {
+            cacheObj[cacheKey] = pickedG2
+            return pickedG2
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore network errors for individual covers
+  }
+
+  const empty = { coverUrl: null, thumbUrl: null }
+  cacheObj[cacheKey] = empty
+  return empty
+}
+
+const KNOWN_SWITCH_TITLES: Record<string, string> = {
+  '0100000000010000': 'Super Mario Odyssey',
+  '0100152000022000': 'Mario Kart 8 Deluxe',
+  '01006A800016E000': 'Super Smash Bros. Ultimate',
+  '010015100B514000': 'Super Mario Bros. Wonder',
+  '010028600EBDA000': "Super Mario 3D World + Bowser's Fury",
+  '0100FD8022DAA000': 'Super Mario Galaxy 2',
+  '0100EA80032EA000': 'New Super Mario Bros. U Deluxe',
+  '01009B90006DC000': 'Super Mario Maker 2',
+  '01009B90006DC800': 'Super Mario Maker 2',
+  '01007EF00011E000': 'The Legend of Zelda: Breath of the Wild',
+  '0100F2C0115B6000': 'The Legend of Zelda: Tears of the Kingdom',
+  '01008CF01BAAC000': 'The Legend of Zelda: Echoes of Wisdom',
+  '01006BB00C6F0000': "The Legend of Zelda: Link's Awakening",
+  '01002DA013484000': 'Metroid Dread',
+  '010012F017576000': 'Metroid Prime Remastered',
+  '01006F8002326000': 'Animal Crossing: New Horizons',
+  '0100ABF008968000': 'Pokémon Sword',
+  '01008DB008C2C000': 'Pokémon Shield',
+  '0100A3D008C5C000': 'Pokémon Scarlet',
+  '01008F6008C5E000': 'Pokémon Violet',
+  '01001F5010DFA000': 'Pokémon Legends: Arceus',
+  '010003F003A34000': "Pokémon: Let's Go, Pikachu!",
+  '0100187003A36000': "Pokémon: Let's Go, Eevee!",
+  '0100000011D90000': 'Pokémon Brilliant Diamond',
+  '010018E011D92000': 'Pokémon Shining Pearl',
+  '010086C00AF7C000': "Luigi's Mansion 3",
+  '01004AD008F7B000': 'Kirby and the Forgotten Land',
+  '010049900F546001': 'Super Mario 3D All-Stars',
+  '0100F43008C44000': 'Fire Emblem: Three Houses',
+  '0100A6301214E000': 'Fire Emblem Engage',
+  '0100E95004038000': 'Xenoblade Chronicles 2',
+  '010074F013262000': 'Xenoblade Chronicles 3',
+  '0100FF500E34A000': 'Xenoblade Chronicles: Definitive Edition',
+  '0100C2500FC20000': 'Splatoon 3',
+  '01003BC0000A0000': 'Splatoon 2',
+  '010057D00ECE4000': 'Paper Mario: The Origami King',
+  '01006B0018BF2000': 'Paper Mario: The Thousand-Year Door',
+  '01008F2005154000': 'Donkey Kong Country: Tropical Freeze',
+  '0100A3900C3E2000': 'Super Mario Party',
+  '01006FE013472000': 'Mario Party Superstars',
+}
+
+const KNOWN_3DS_TITLES: Record<string, string> = {
+  '0004000000030700': 'Mario Kart 7',
+  '0004000000030800': 'Mario Kart 7',
+  '0004000000030600': 'Mario Kart 7',
+  '0004000000053f00': 'Super Mario 3D Land',
+  '0004000000054000': 'Super Mario 3D Land',
+  '0004000000054100': 'Super Mario 3D Land',
+  '000400000007af00': 'New Super Mario Bros. 2',
+  '000400000007ad00': 'New Super Mario Bros. 2',
+  '000400000007ae00': 'New Super Mario Bros. 2',
+  '0004000000055d00': 'Pokémon X',
+  '0004000000055e00': 'Pokémon Y',
+  '000400000011c400': 'Pokémon Omega Ruby',
+  '000400000011c500': 'Pokémon Alpha Sapphire',
+  '0004000000164800': 'Pokémon Sun',
+  '0004000000175e00': 'Pokémon Moon',
+  '00040000001b5000': 'Pokémon Ultra Sun',
+  '00040000001b5100': 'Pokémon Ultra Moon',
+  '0004000000033500': 'The Legend of Zelda: Ocarina of Time 3D',
+  '0004000000033600': 'The Legend of Zelda: Ocarina of Time 3D',
+  '0004000000125500': "The Legend of Zelda: Majora's Mask 3D",
+  '0004000000125600': "The Legend of Zelda: Majora's Mask 3D",
+  '00040000000ec300': 'The Legend of Zelda: A Link Between Worlds',
+  '00040000000ec400': 'The Legend of Zelda: A Link Between Worlds',
+  '0004000000086300': 'Animal Crossing: New Leaf',
+  '0004000000086400': 'Animal Crossing: New Leaf',
+  '00040000000edf00': 'Super Smash Bros. for Nintendo 3DS',
+  '00040000000ee000': 'Super Smash Bros. for Nintendo 3DS',
+  '00040000000a0500': 'Fire Emblem Awakening',
+  '0004000000076500': "Luigi's Mansion: Dark Moon",
+}
+
+const KNOWN_WIIU_TITLES: Record<string, string> = {
+  '101c9400': 'The Legend of Zelda: Breath of the Wild',
+  '101c9500': 'The Legend of Zelda: Breath of the Wild',
+  '101c9300': 'The Legend of Zelda: Breath of the Wild',
+  '1010ec00': 'Mario Kart 8',
+  '1010ed00': 'Mario Kart 8',
+  '10144f00': 'Super Smash Bros. for Wii U',
+  '10145000': 'Super Smash Bros. for Wii U',
+  '10145d00': 'Super Mario 3D World',
+  '10101e00': 'New Super Mario Bros. U',
+  '10199500': 'The Legend of Zelda: The Wind Waker HD',
+  '101c4d00': 'Xenoblade Chronicles X',
+  '10110e00': 'Splatoon',
+  '1018dc00': 'Super Mario Maker',
+}
+
+function cleanRomOrSaveTitle(rawFileName: string): string {
+  let base = rawFileName
+    .replace(/\.(state\d*|state\.auto|srm|sav|dsv|sra|gci|mcd|mcr|ps2|bin|raw|nsp|xci|nsz|cci|3ds|cia|nds|gba|gbc|gb|sfc|smc|nes|iso|rvz|wbfs|cso|chd)$/i, '')
+    .replace(/\.(state\d*|srm|sav|dsv|sra|gci)$/i, '')
+
+  // Si es archivo .gci de Dolphin tipo "01-GMSE-super_mario_sunshine"
+  const gciMatch = base.match(/^\d{2}-[A-Z0-9]{4}-(.+)$/i)
+  if (gciMatch) {
+    base = gciMatch[1].replace(/_/g, ' ')
+  }
+
+  // Quitar prefijos numéricos de ROMs (ej. "0434 - New Super Mario Bros.")
+  base = base.replace(/^\d{3,4}\s*-\s*/, '')
+
+  // Quitar etiquetas entre corchetes o paréntesis como (USA), (Europe), (En,Ja), [0100...], [v0], [!]
+  base = base
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/™|®/g, '')
+    .replace(/[_\s]+/g, ' ')
+    .trim()
+
+  if (!base) return rawFileName
+
+  // Si todo está en minúsculas (como "super mario sunshine"), capitalizar palabras
+  if (base === base.toLowerCase()) {
+    base = base
+      .split(' ')
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
+  }
+
+  if (base.toLowerCase() === 'smw-extrawide-raw') {
+    return 'Super Mario World'
+  }
+
+  return base
+}
+
+function parseParamSfoTitle(sfoPath: string): string | null {
+  try {
+    if (!fs.existsSync(sfoPath)) return null
+    const buf = fs.readFileSync(sfoPath)
+    if (buf.length < 20 || buf.toString('ascii', 0, 4) !== '\x00PSF') return null
+    const keyTableStart = buf.readUInt32LE(8)
+    const dataTableStart = buf.readUInt32LE(12)
+    const tablesEntries = buf.readUInt32LE(16)
+    for (let i = 0; i < tablesEntries; i++) {
+      const entryOffset = 20 + i * 16
+      if (entryOffset + 16 > buf.length) break
+      const keyOffset = buf.readUInt16LE(entryOffset)
+      const dataLen = buf.readUInt32LE(entryOffset + 4)
+      const dataOffset = buf.readUInt32LE(entryOffset + 12)
+
+      let keyEnd = keyTableStart + keyOffset
+      while (keyEnd < buf.length && buf[keyEnd] !== 0) keyEnd++
+      const key = buf.toString('utf8', keyTableStart + keyOffset, keyEnd)
+      if (key === 'TITLE') {
+        const rawTitle = buf
+          .toString('utf8', dataTableStart + dataOffset, dataTableStart + dataOffset + dataLen)
+          .replace(/\0+$/g, '')
+          .replace(/\r?\n/g, ' ')
+          .trim()
+        if (rawTitle) return rawTitle
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+function computeFileGroupIgnoresInFolder(
+  dirPath: string,
+  includedFileNames: string[]
+): string[] {
+  const includedLower = new Set(includedFileNames.map((n) => n.toLowerCase()))
+  const ignores: string[] = []
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    for (const e of entries) {
+      if (!includedLower.has(e.name.toLowerCase())) {
+        ignores.push(e.name)
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return ignores
+}
+
+function scanEmulatorSavesWithEmuAtlasAndEmuVault(ctx: {
+  home: string
+  appData: string
+  localAppData: string
+  xdgData: string
+  xdgConfig: string
+  docCandidates: string[]
+}): Array<{
+  name: string
+  searchTitle: string
+  steamId: number | null
+  localPath: string
+  ignoredPaths: string[]
+  source: 'ludusavi' | 'emuvault' | 'emuatlas'
+  emulatorName: string | null
+  systemName: string | null
+}> {
+  const results: Array<{
+    name: string
+    searchTitle: string
+    steamId: number | null
+    localPath: string
+    ignoredPaths: string[]
+    source: 'ludusavi' | 'emuvault' | 'emuatlas'
+    emulatorName: string | null
+    systemName: string | null
+  }> = []
+  const seenKeys = new Set<string>()
+
+  const pushUnique = (item: {
+    name: string
+    searchTitle: string
+    steamId: number | null
+    localPath: string
+    ignoredPaths: string[]
+    source: 'ludusavi' | 'emuvault' | 'emuatlas'
+    emulatorName: string | null
+    systemName: string | null
+  }) => {
+    const normPath = path.resolve(item.localPath)
+    const key = `${item.name.toLowerCase()}::${normPath.toLowerCase()}`
+    if (seenKeys.has(key)) return
+    seenKeys.add(key)
+    results.push({
+      ...item,
+      localPath: normPath,
+    })
+  }
+
+  // 1. Descubrir raíces de Emulación (EmuAtlas / EmuDeck / EmuVault)
+  const emulationRoots = new Set<string>()
+  const savesRoots = new Set<string>()
+  const romsRoots = new Set<string>()
+
+  // Leer %APPDATA%/EmuDeck/settings.ps1 si existe
+  const emuDeckSettings = path.join(ctx.appData, 'EmuDeck', 'settings.ps1')
+  if (fs.existsSync(emuDeckSettings)) {
+    try {
+      const content = fs.readFileSync(emuDeckSettings, 'utf-8')
+      const mEmu = content.match(/\$emulationPath\s*=\s*"([^"]+)"/i)
+      const mSaves = content.match(/\$savesPath\s*=\s*"([^"]+)"/i)
+      const mRoms = content.match(/\$romsPath\s*=\s*"([^"]+)"/i)
+      if (mEmu?.[1] && fs.existsSync(mEmu[1])) emulationRoots.add(path.resolve(mEmu[1]))
+      if (mSaves?.[1] && fs.existsSync(mSaves[1])) savesRoots.add(path.resolve(mSaves[1]))
+      if (mRoms?.[1] && fs.existsSync(mRoms[1])) romsRoots.add(path.resolve(mRoms[1]))
+    } catch {
+      // ignore
+    }
+  }
+
+  // Escanear letras de unidad comunes en Windows y rutas en Home para EmuAtlas / Emulation
+  const driveLetters = ['C', 'D', 'E', 'F', 'G', 'H']
+  for (const letter of driveLetters) {
+    for (const folder of ['Emulation', 'EmuAtlas', 'Games\\Emulation', 'Games\\EmuAtlas']) {
+      const candidate = `${letter}:\\${folder}`
+      if (fs.existsSync(candidate)) {
+        emulationRoots.add(path.resolve(candidate))
+      }
+    }
+  }
+  for (const folder of ['Emulation', 'EmuAtlas']) {
+    const candidate = path.join(ctx.home, folder)
+    if (fs.existsSync(candidate)) {
+      emulationRoots.add(path.resolve(candidate))
+    }
+  }
+
+  for (const root of emulationRoots) {
+    const sDir = path.join(root, 'saves')
+    const rDir = path.join(root, 'roms')
+    if (fs.existsSync(sDir)) savesRoots.add(sDir)
+    if (fs.existsSync(rDir)) romsRoots.add(rDir)
+  }
+
+  // 2. Construir mapas dinámicos de TitleID -> Nombre de Juego a partir de ROMs locales y configs
+  const switchTitleMap = new Map<string, string>(
+    Object.entries(KNOWN_SWITCH_TITLES).map(([k, v]) => [k.toUpperCase(), v])
+  )
+  const n3dsTitleMap = new Map<string, string>(
+    Object.entries(KNOWN_3DS_TITLES).map(([k, v]) => [k.toLowerCase(), v])
+  )
+
+  const registerSwitchFileTitle = (fileOrPath: string) => {
+    const base = path.basename(fileOrPath)
+    const tidMatch = base.match(/\[(0100[0-9A-Fa-f]{12})\]/)
+    if (tidMatch) {
+      const tid = tidMatch[1].toUpperCase()
+      const clean = cleanRomOrSaveTitle(base)
+      if (clean && ! tid.startsWith(clean.toUpperCase())) {
+        switchTitleMap.set(tid, clean)
+      }
+    }
+  }
+
+  for (const rRoot of romsRoots) {
+    // Switch ROMs
+    const swDir = path.join(rRoot, 'switch')
+    if (fs.existsSync(swDir)) {
+      try {
+        for (const f of fs.readdirSync(swDir)) {
+          registerSwitchFileTitle(f)
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Nintendo 3DS ROMs (.cci / .3ds NCSD header offset 0x108 -> 8-byte LE TitleID)
+    for (const sub of ['n3ds', '3ds']) {
+      const ds3Dir = path.join(rRoot, sub)
+      if (fs.existsSync(ds3Dir)) {
+        try {
+          for (const f of fs.readdirSync(ds3Dir)) {
+            if (!/\.(cci|3ds|cxi)$/i.test(f)) continue
+            const fullRom = path.join(ds3Dir, f)
+            const fd = fs.openSync(fullRom, 'r')
+            try {
+              const buf = Buffer.alloc(8)
+              const bytesRead = fs.readSync(fd, buf, 0, 8, 0x108)
+              if (bytesRead === 8) {
+                const tidHex = buf.readBigUInt64LE(0).toString(16).padStart(16, '0').toLowerCase()
+                if (tidHex.startsWith('00040000')) {
+                  n3dsTitleMap.set(tidHex, cleanRomOrSaveTitle(f))
+                }
+              }
+            } finally {
+              fs.closeSync(fd)
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  // Leer qt-config.ini de Eden / Yuzu / Suyu / Sudachi para extraer recentFiles y gamedirs de Switch
+  for (const swEmu of ['eden', 'yuzu', 'suyu', 'sudachi', 'citron']) {
+    const iniPath = path.join(ctx.appData, swEmu, 'config', 'qt-config.ini')
+    if (fs.existsSync(iniPath)) {
+      try {
+        const iniText = fs.readFileSync(iniPath, 'utf-8')
+        const matches = iniText.matchAll(/([^,"=\r\n]+\[(0100[0-9A-Fa-f]{12})\][^,"=\r\n]*)/g)
+        for (const m of matches) {
+          registerSwitchFileTitle(m[1])
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // ==========================================================================
+  // 3. ESCANEAR EMULADORES DE SWITCH (Eden / Eden-NX2 / Yuzu / Suyu / Sudachi)
+  // ==========================================================================
+  const switchEmulators = [
+    { id: 'eden', label: 'Eden' },
+    { id: 'yuzu', label: 'Yuzu' },
+    { id: 'suyu', label: 'Suyu' },
+    { id: 'sudachi', label: 'Sudachi' },
+    { id: 'citron', label: 'Citron' },
+  ]
+
+  for (const swEmu of switchEmulators) {
+    const candidateSaveBases: string[] = [
+      path.join(ctx.appData, swEmu.id, 'nand', 'user', 'save', '0000000000000000'),
+      path.join(ctx.xdgData, swEmu.id, 'nand', 'user', 'save', '0000000000000000'),
+    ]
+    for (const sRoot of savesRoots) {
+      candidateSaveBases.push(path.join(sRoot, swEmu.id, 'saves', '0000000000000000'))
+      candidateSaveBases.push(path.join(sRoot, swEmu.id, 'nand', 'user', 'save', '0000000000000000'))
+    }
+
+    for (const baseDir of candidateSaveBases) {
+      if (!fs.existsSync(baseDir)) continue
+      try {
+        const profiles = fs.readdirSync(baseDir, { withFileTypes: true }).filter((d) => d.isDirectory())
+        for (const prof of profiles) {
+          const profPath = path.join(baseDir, prof.name)
+          const titleDirs = fs
+            .readdirSync(profPath, { withFileTypes: true })
+            .filter((d) => d.isDirectory() && /^0100[0-9A-Fa-f]{12}$/.test(d.name))
+
+          for (const tDir of titleDirs) {
+            const fullSaveDir = path.join(profPath, tDir.name)
+            if (!hasAnyRealFile(fullSaveDir)) continue
+            const tid = tDir.name.toUpperCase()
+            // Ignorar carpeta interna de Mii de sistema si no es un juego real
+            if (tid === '0100000000001009' || tid === '0100000000001000') continue
+            const cleanTitle = switchTitleMap.get(tid) || `Switch Title ${tid}`
+            pushUnique({
+              name: `${cleanTitle} (${swEmu.label})`,
+              searchTitle: cleanTitle,
+              steamId: null,
+              localPath: fullSaveDir,
+              ignoredPaths: [],
+              source: 'emuatlas',
+              emulatorName: swEmu.label,
+              systemName: 'Nintendo Switch',
+            })
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // ==========================================================================
+  // 4. ESCANEAR RYUJINX (Nintendo Switch)
+  // ==========================================================================
+  const ryujinxSaveBases: string[] = [
+    path.join(ctx.appData, 'Ryujinx', 'bis', 'user', 'save'),
+    path.join(ctx.xdgConfig, 'Ryujinx', 'bis', 'user', 'save'),
+  ]
+  for (const sRoot of savesRoots) {
+    ryujinxSaveBases.push(path.join(sRoot, 'ryujinx', 'saves'))
+    ryujinxSaveBases.push(path.join(sRoot, 'Ryujinx', 'bis', 'user', 'save'))
+  }
+
+  for (const ryuBase of ryujinxSaveBases) {
+    if (!fs.existsSync(ryuBase)) continue
+    try {
+      const entries = fs.readdirSync(ryuBase, { withFileTypes: true }).filter((d) => d.isDirectory())
+      const seenRyuTidsInBase = new Set<string>()
+
+      for (const entry of entries) {
+        const slotPath = path.join(ryuBase, entry.name)
+        // Caso A: subcarpeta 0000000000000000/<profile>/<titleId>
+        if (entry.name === '0000000000000000') {
+          const subProfiles = fs
+            .readdirSync(slotPath, { withFileTypes: true })
+            .filter((d) => d.isDirectory())
+          for (const sp of subProfiles) {
+            const spPath = path.join(slotPath, sp.name)
+            const tDirs = fs
+              .readdirSync(spPath, { withFileTypes: true })
+              .filter((d) => d.isDirectory() && /^0100[0-9A-Fa-f]{12}$/.test(d.name))
+            for (const td of tDirs) {
+              const fullSave = path.join(spPath, td.name)
+              if (!hasAnyRealFile(fullSave)) continue
+              const tid = td.name.toUpperCase()
+              if (seenRyuTidsInBase.has(tid)) continue
+              seenRyuTidsInBase.add(tid)
+              const cleanTitle = switchTitleMap.get(tid) || `Switch Title ${tid}`
+              pushUnique({
+                name: `${cleanTitle} (Ryujinx)`,
+                searchTitle: cleanTitle,
+                steamId: null,
+                localPath: fullSave,
+                ignoredPaths: [],
+                source: 'emuatlas',
+                emulatorName: 'Ryujinx',
+                systemName: 'Nintendo Switch',
+              })
+            }
+          }
+          continue
+        }
+
+        // Caso B: carpeta numerada 0000000000000001.. con archivo ExtraData0 (primeros 8 bytes = TitleID LE)
+        const extraDataPath = path.join(slotPath, 'ExtraData0')
+        if (fs.existsSync(extraDataPath)) {
+          try {
+            const buf = fs.readFileSync(extraDataPath)
+            if (buf.length >= 8) {
+              const tid = buf.readBigUInt64LE(0).toString(16).padStart(16, '0').toUpperCase()
+              if (tid.startsWith('0100') && !seenRyuTidsInBase.has(tid)) {
+                const subZero = path.join(slotPath, '0')
+                const targetFolder =
+                  fs.existsSync(subZero) && hasAnyRealFile(subZero) ? slotPath : slotPath
+                if (hasAnyRealFile(targetFolder)) {
+                  seenRyuTidsInBase.add(tid)
+                  const cleanTitle = switchTitleMap.get(tid) || `Switch Title ${tid}`
+                  pushUnique({
+                    name: `${cleanTitle} (Ryujinx)`,
+                    searchTitle: cleanTitle,
+                    steamId: null,
+                    localPath: targetFolder,
+                    ignoredPaths: [],
+                    source: 'emuatlas',
+                    emulatorName: 'Ryujinx',
+                    systemName: 'Nintendo Switch',
+                  })
+                }
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // ==========================================================================
+  // 5. ESCANEAR CEMU (Wii U - EmuAtlas)
+  // ==========================================================================
+  const cemuBases: string[] = [
+    path.join(ctx.appData, 'Cemu', 'mlc01', 'usr', 'save', '00050000'),
+    path.join(ctx.xdgData, 'Cemu', 'mlc01', 'usr', 'save', '00050000'),
+  ]
+  for (const sRoot of savesRoots) {
+    cemuBases.push(path.join(sRoot, 'Cemu', 'saves', '00050000'))
+    cemuBases.push(path.join(sRoot, 'cemu', 'saves', '00050000'))
+  }
+  for (const rRoot of romsRoots) {
+    cemuBases.push(path.join(rRoot, 'wiiu', 'mlc01', 'usr', 'save', '00050000'))
+  }
+
+  const seenCemuTids = new Set<string>()
+  for (const cBase of cemuBases) {
+    if (!fs.existsSync(cBase)) continue
+    try {
+      const tDirs = fs.readdirSync(cBase, { withFileTypes: true }).filter((d) => d.isDirectory())
+      for (const td of tDirs) {
+        const tidLow = td.name.toLowerCase()
+        if (seenCemuTids.has(tidLow)) continue
+        const fullSaveDir = path.join(cBase, td.name)
+        const userDir = path.join(fullSaveDir, 'user')
+        if (!fs.existsSync(userDir) || !hasAnyRealFile(userDir)) continue
+
+        let gameTitle = KNOWN_WIIU_TITLES[tidLow] || ''
+        const metaXml = path.join(fullSaveDir, 'meta', 'meta.xml')
+        if (fs.existsSync(metaXml)) {
+          try {
+            const xml = fs.readFileSync(metaXml, 'utf-8')
+            const mLong = xml.match(/<longname_en[^>]*>([\s\S]*?)<\/longname_en>/i)
+            const mShort = xml.match(/<shortname_en[^>]*>([\s\S]*?)<\/shortname_en>/i)
+            const rawName = (mLong?.[1] || mShort?.[1] || '').replace(/\r?\n/g, ': ').replace(/\s+/g, ' ').trim()
+            if (rawName) gameTitle = rawName
+          } catch {
+            // ignore
+          }
+        }
+        if (!gameTitle) gameTitle = `Wii U Title ${tidLow.toUpperCase()}`
+        seenCemuTids.add(tidLow)
+
+        pushUnique({
+          name: `${gameTitle} (Cemu)`,
+          searchTitle: gameTitle,
+          steamId: null,
+          localPath: fullSaveDir,
+          ignoredPaths: [],
+          source: 'emuatlas',
+          emulatorName: 'Cemu',
+          systemName: 'Wii U',
+        })
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // ==========================================================================
+  // 6. ESCANEAR AZAHAR / CITRA / LIME3DS (Nintendo 3DS - EmuAtlas)
+  // ==========================================================================
+  const n3dsEmus = [
+    { id: 'azahar', label: 'Azahar' },
+    { id: 'Citra', label: 'Citra' },
+    { id: 'Lime3DS', label: 'Lime3DS' },
+  ]
+  for (const emu3ds of n3dsEmus) {
+    const sdmcRoots: string[] = [
+      path.join(ctx.appData, emu3ds.id, 'sdmc', 'Nintendo 3DS'),
+      path.join(ctx.xdgData, emu3ds.id.toLowerCase(), 'sdmc', 'Nintendo 3DS'),
+    ]
+    for (const sRoot of savesRoots) {
+      sdmcRoots.push(path.join(sRoot, emu3ds.id.toLowerCase(), 'saves', 'Nintendo 3DS'))
+    }
+
+    for (const n3dsRoot of sdmcRoots) {
+      if (!fs.existsSync(n3dsRoot)) continue
+      try {
+        const id0Dirs = fs.readdirSync(n3dsRoot, { withFileTypes: true }).filter((d) => d.isDirectory())
+        for (const id0 of id0Dirs) {
+          const id0Path = path.join(n3dsRoot, id0.name)
+          const id1Dirs = fs.readdirSync(id0Path, { withFileTypes: true }).filter((d) => d.isDirectory())
+          for (const id1 of id1Dirs) {
+            const title00040000 = path.join(id0Path, id1.name, 'title', '00040000')
+            if (!fs.existsSync(title00040000)) continue
+            const gameDirs = fs
+              .readdirSync(title00040000, { withFileTypes: true })
+              .filter((d) => d.isDirectory())
+            for (const gd of gameDirs) {
+              const dataDir = path.join(title00040000, gd.name, 'data', '00000001')
+              const fallbackDataDir = path.join(title00040000, gd.name, 'data')
+              const targetSaveDir = fs.existsSync(dataDir) ? dataDir : fallbackDataDir
+              if (!fs.existsSync(targetSaveDir) || !hasAnyRealFile(targetSaveDir)) continue
+
+              const fullTid = `00040000${gd.name.toLowerCase()}`
+              const cleanTitle =
+                n3dsTitleMap.get(fullTid) || `Nintendo 3DS (${gd.name.toUpperCase()})`
+
+              pushUnique({
+                name: `${cleanTitle} (${emu3ds.label})`,
+                searchTitle: cleanTitle,
+                steamId: null,
+                localPath: targetSaveDir,
+                ignoredPaths: [],
+                source: 'emuatlas',
+                emulatorName: emu3ds.label,
+                systemName: 'Nintendo 3DS',
+              })
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // ==========================================================================
+  // 7. ESCANEAR DOLPHIN (GameCube & Wii - EmuVault & EmuAtlas)
+  // ==========================================================================
+  const dolphinGcBases: string[] = [
+    path.join(ctx.appData, 'Dolphin Emulator', 'GC'),
+    path.join(ctx.xdgData, 'dolphin-emu', 'GC'),
+    ...ctx.docCandidates.map((d) => path.join(d, 'Dolphin Emulator', 'GC')),
+  ]
+  for (const sRoot of savesRoots) {
+    dolphinGcBases.push(path.join(sRoot, 'dolphin', 'GC'))
+  }
+
+  for (const gcBase of dolphinGcBases) {
+    if (!fs.existsSync(gcBase)) continue
+    for (const region of ['USA', 'EUR', 'JAP']) {
+      for (const card of ['Card A', 'Card B']) {
+        const cardDir = path.join(gcBase, region, card)
+        if (!fs.existsSync(cardDir)) continue
+        try {
+          const files = fs
+            .readdirSync(cardDir)
+            .filter(
+              (f) =>
+                f.toLowerCase().endsWith('.gci') &&
+                !f.toLowerCase().includes('.sync-conflict-')
+            )
+          const groupedByGame = new Map<string, string[]>()
+          for (const f of files) {
+            const gameTitle = cleanRomOrSaveTitle(f)
+            if (!groupedByGame.has(gameTitle)) groupedByGame.set(gameTitle, [])
+            groupedByGame.get(gameTitle)!.push(f)
+          }
+
+          for (const [gameTitle, gciFiles] of groupedByGame.entries()) {
+            const ignores = computeFileGroupIgnoresInFolder(cardDir, gciFiles)
+            pushUnique({
+              name: `${gameTitle} (Dolphin GC)`,
+              searchTitle: gameTitle,
+              steamId: null,
+              localPath: cardDir,
+              ignoredPaths: ignores,
+              source: 'emuvault',
+              emulatorName: 'Dolphin',
+              systemName: 'GameCube',
+            })
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  // ==========================================================================
+  // 8. ESCANEAR RETROARCH (Saves .srm/.sav y States - EmuVault & EmuAtlas)
+  // ==========================================================================
+  const retroArchDirs: Array<{ dir: string; kind: 'Save' | 'State' }> = [
+    { dir: path.join(ctx.appData, 'RetroArch', 'saves'), kind: 'Save' },
+    { dir: path.join(ctx.appData, 'RetroArch', 'states'), kind: 'State' },
+    { dir: path.join(ctx.appData, 'EmuDeck', 'Emulators', 'RetroArch', 'saves'), kind: 'Save' },
+    { dir: path.join(ctx.appData, 'EmuDeck', 'Emulators', 'RetroArch', 'states'), kind: 'State' },
+    { dir: path.join(ctx.xdgConfig, 'retroarch', 'saves'), kind: 'Save' },
+    { dir: path.join(ctx.xdgConfig, 'retroarch', 'states'), kind: 'State' },
+  ]
+  for (const sRoot of savesRoots) {
+    retroArchDirs.push({ dir: path.join(sRoot, 'retroarch', 'saves'), kind: 'Save' })
+    retroArchDirs.push({ dir: path.join(sRoot, 'retroarch', 'states'), kind: 'State' })
+  }
+
+  const scanFlatEmulatorSaveDir = (
+    dirPath: string,
+    emulatorName: string,
+    systemName: string,
+    source: 'emuvault' | 'emuatlas',
+    validExtRegex: RegExp
+  ) => {
+    if (!fs.existsSync(dirPath)) return
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+      const grouped = new Map<string, string[]>()
+
+      for (const e of entries) {
+        if (e.isFile() && validExtRegex.test(e.name) && !e.name.includes('.sync-conflict-')) {
+          const cleanTitle = cleanRomOrSaveTitle(e.name)
+          if (!grouped.has(cleanTitle)) grouped.set(cleanTitle, [])
+          grouped.get(cleanTitle)!.push(e.name)
+        } else if (e.isDirectory()) {
+          // Algunos núcleos de RetroArch guardan en subcarpetas por núcleo (ej. states/Snes9x, saves/mGBA)
+          const subDir = path.join(dirPath, e.name)
+          const subEntries = fs.readdirSync(subDir, { withFileTypes: true })
+          const subGrouped = new Map<string, string[]>()
+          for (const se of subEntries) {
+            if (se.isFile() && validExtRegex.test(se.name) && !se.name.includes('.sync-conflict-')) {
+              const cleanTitle = cleanRomOrSaveTitle(se.name)
+              if (!subGrouped.has(cleanTitle)) subGrouped.set(cleanTitle, [])
+              subGrouped.get(cleanTitle)!.push(se.name)
+            }
+          }
+          for (const [cleanTitle, fileList] of subGrouped.entries()) {
+            const ignores = computeFileGroupIgnoresInFolder(subDir, fileList)
+            pushUnique({
+              name: `${cleanTitle} (${emulatorName} • ${e.name})`,
+              searchTitle: cleanTitle,
+              steamId: null,
+              localPath: subDir,
+              ignoredPaths: ignores,
+              source,
+              emulatorName,
+              systemName: e.name,
+            })
+          }
+        }
+      }
+
+      for (const [cleanTitle, fileList] of grouped.entries()) {
+        const ignores = computeFileGroupIgnoresInFolder(dirPath, fileList)
+        pushUnique({
+          name: `${cleanTitle} (${emulatorName})`,
+          searchTitle: cleanTitle,
+          steamId: null,
+          localPath: dirPath,
+          ignoredPaths: ignores,
+          source,
+          emulatorName,
+          systemName,
+        })
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  for (const ra of retroArchDirs) {
+    scanFlatEmulatorSaveDir(
+      ra.dir,
+      ra.kind === 'State' ? 'RetroArch States' : 'RetroArch',
+      'RetroArch',
+      'emuvault',
+      /\.(srm|sav|sra|gci|bin|dsv|mcr|mcd|state\d*|state\.auto)$/i
+    )
+  }
+
+  // ==========================================================================
+  // 9. ESCANEAR mGBA, melonDS, Snes9x, DuckStation, PCSX2, PPSSPP, RPCS3, shadPS4
+  // ==========================================================================
+  // mGBA (EmuVault)
+  const mgbaDirs = [
+    path.join(ctx.appData, 'mGBA'),
+    path.join(ctx.xdgConfig, 'mgba'),
+    ...Array.from(savesRoots).map((r) => path.join(r, 'mgba')),
+  ]
+  for (const d of mgbaDirs) {
+    scanFlatEmulatorSaveDir(d, 'mGBA', 'Game Boy Advance', 'emuvault', /\.(sav|srm|ss\d+)$/i)
+  }
+
+  // melonDS (EmuVault & EmuAtlas)
+  const melonDirs = [
+    path.join(ctx.appData, 'melonDS'),
+    path.join(ctx.xdgConfig, 'melonDS'),
+    ...Array.from(savesRoots).map((r) => path.join(r, 'melonds', 'saves')),
+  ]
+  for (const d of melonDirs) {
+    scanFlatEmulatorSaveDir(d, 'melonDS', 'Nintendo DS', 'emuvault', /\.(sav|dsv|ml\d+)$/i)
+  }
+
+  // Snes9x (EmuVault)
+  const snes9xDirs = [
+    path.join(ctx.appData, 'Snes9x'),
+    path.join(ctx.home, '.snes9x'),
+    ...Array.from(savesRoots).map((r) => path.join(r, 'snes9x')),
+  ]
+  for (const d of snes9xDirs) {
+    scanFlatEmulatorSaveDir(d, 'Snes9x', 'SNES', 'emuvault', /\.(srm|sav|00\d)$/i)
+  }
+
+  // DuckStation (EmuVault & EmuAtlas)
+  const duckDirs = [
+    path.join(ctx.appData, 'DuckStation', 'memcards'),
+    path.join(ctx.xdgData, 'duckstation', 'memcards'),
+    ...ctx.docCandidates.map((d) => path.join(d, 'DuckStation', 'memcards')),
+    ...Array.from(savesRoots).map((r) => path.join(r, 'duckstation', 'saves')),
+  ]
+  for (const d of duckDirs) {
+    scanFlatEmulatorSaveDir(d, 'DuckStation', 'PlayStation 1', 'emuvault', /\.(mcd|mcr)$/i)
+  }
+
+  // PCSX2 (EmuVault & EmuAtlas)
+  const pcsx2Dirs = [
+    path.join(ctx.appData, 'PCSX2', 'memcards'),
+    path.join(ctx.xdgConfig, 'PCSX2', 'memcards'),
+    ...ctx.docCandidates.map((d) => path.join(d, 'PCSX2', 'memcards')),
+    ...Array.from(savesRoots).map((r) => path.join(r, 'pcsx2', 'saves')),
+  ]
+  for (const d of pcsx2Dirs) {
+    if (!fs.existsSync(d)) continue
+    try {
+      const ps2Cards = fs.readdirSync(d).filter((f) => /\.ps2$/i.test(f))
+      if (ps2Cards.length > 0) {
+        // Si el usuario tiene ROMs de PS2 en roms/ps2, usar el primer juego representativo para la carátula o "PlayStation 2"
+        let coverSearch = 'PlayStation 2'
+        for (const rRoot of romsRoots) {
+          const ps2RomDir = path.join(rRoot, 'ps2')
+          if (fs.existsSync(ps2RomDir)) {
+            const roms = fs
+              .readdirSync(ps2RomDir)
+              .filter((f) => /\.(iso|chd|bin|gz)$/i.test(f))
+            if (roms.length > 0) {
+              coverSearch = cleanRomOrSaveTitle(roms[0])
+              break
+            }
+          }
+        }
+        const ignores = computeFileGroupIgnoresInFolder(d, ps2Cards)
+        pushUnique({
+          name: `Memory Cards PS2 (PCSX2)`,
+          searchTitle: coverSearch,
+          steamId: null,
+          localPath: d,
+          ignoredPaths: ignores,
+          source: 'emuvault',
+          emulatorName: 'PCSX2',
+          systemName: 'PlayStation 2',
+        })
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // PPSSPP (EmuVault & EmuAtlas)
+  const ppssppDirs = [
+    path.join(ctx.appData, 'PPSSPP', 'PSP', 'SAVEDATA'),
+    path.join(ctx.xdgConfig, 'ppsspp', 'PSP', 'SAVEDATA'),
+    ...ctx.docCandidates.map((d) => path.join(d, 'PPSSPP', 'PSP', 'SAVEDATA')),
+    ...Array.from(savesRoots).map((r) => path.join(r, 'ppsspp', 'saves', 'PSP', 'SAVEDATA')),
+    ...Array.from(savesRoots).map((r) => path.join(r, 'ppsspp', 'saves')),
+  ]
+  for (const d of ppssppDirs) {
+    if (!fs.existsSync(d)) continue
+    try {
+      const subDirs = fs.readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory())
+      for (const sd of subDirs) {
+        if (sd.name === 'PSP' || sd.name === 'SAVEDATA') continue
+        const fullSd = path.join(d, sd.name)
+        if (!hasAnyRealFile(fullSd)) continue
+        const sfoTitle = parseParamSfoTitle(path.join(fullSd, 'PARAM.SFO'))
+        const cleanTitle = sfoTitle || sd.name
+        pushUnique({
+          name: `${cleanTitle} (PPSSPP)`,
+          searchTitle: cleanTitle,
+          steamId: null,
+          localPath: fullSd,
+          ignoredPaths: [],
+          source: 'emuvault',
+          emulatorName: 'PPSSPP',
+          systemName: 'PSP',
+        })
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // RPCS3 (PlayStation 3 - EmuAtlas)
+  const rpcs3Dirs = [
+    path.join(ctx.appData, 'rpcs3', 'dev_hdd0', 'home', '00000001', 'savedata'),
+    path.join(ctx.xdgConfig, 'rpcs3', 'dev_hdd0', 'home', '00000001', 'savedata'),
+    ...Array.from(savesRoots).map((r) => path.join(r, 'rpcs3', 'saves')),
+    ...Array.from(emulationRoots).map((r) =>
+      path.join(r, 'storage', 'rpcs3', 'dev_hdd0', 'home', '00000001', 'savedata')
+    ),
+  ]
+  for (const d of rpcs3Dirs) {
+    if (!fs.existsSync(d)) continue
+    try {
+      const subDirs = fs.readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory())
+      for (const sd of subDirs) {
+        const fullSd = path.join(d, sd.name)
+        if (!hasAnyRealFile(fullSd)) continue
+        const sfoTitle = parseParamSfoTitle(path.join(fullSd, 'PARAM.SFO'))
+        const cleanTitle = sfoTitle || sd.name
+        pushUnique({
+          name: `${cleanTitle} (RPCS3)`,
+          searchTitle: cleanTitle,
+          steamId: null,
+          localPath: fullSd,
+          ignoredPaths: [],
+          source: 'emuatlas',
+          emulatorName: 'RPCS3',
+          systemName: 'PlayStation 3',
+        })
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // EmuVault GameScanner: Buscar archivos de guardado (.sav, .srm, .dsv, .sra) junto a las ROMs en roms/<system>
+  const emuVaultSystems: Record<string, string> = {
+    nes: 'NES',
+    snes: 'SNES',
+    gb: 'Game Boy',
+    gbc: 'Game Boy Color',
+    gba: 'Game Boy Advance',
+    nds: 'Nintendo DS',
+    genesis: 'Sega Genesis',
+    sms: 'Master System',
+    gg: 'Game Gear',
+    psx: 'PlayStation 1',
+    n64: 'Nintendo 64',
+    arcade: 'Arcade',
+  }
+  for (const rRoot of romsRoots) {
+    for (const [sysKey, sysLabel] of Object.entries(emuVaultSystems)) {
+      const sysDir = path.join(rRoot, sysKey)
+      if (!fs.existsSync(sysDir)) continue
+      scanFlatEmulatorSaveDir(
+        sysDir,
+        `EmuVault ${sysLabel}`,
+        sysLabel,
+        'emuvault',
+        /\.(sav|srm|dsv|sra|eep|fla|mcr|mcd)$/i
+      )
+    }
+  }
+
+  return results
+}
+
+async function scanInstalledGameSavesOnPc(): Promise<DetectedGameSaveItem[]> {
+  const games = await ensureLudusaviManifestGames()
+
+  const dirCache = new Map<
+    string,
+    {
+      realPath: string
+      entries: Map<string, { name: string; isDir: boolean; isFile: boolean }>
+    } | null
+  >()
+
+  const getDirEntries = (dirPath: string) => {
+    const norm = path.resolve(dirPath)
+    const key = norm.toLowerCase()
+    if (dirCache.has(key)) return dirCache.get(key) || null
+    try {
+      const entries = fs.readdirSync(norm, { withFileTypes: true })
+      const map = new Map<string, { name: string; isDir: boolean; isFile: boolean }>()
+      for (const e of entries) {
+        map.set(e.name.toLowerCase(), {
+          name: e.name,
+          isDir: e.isDirectory(),
+          isFile: e.isFile(),
+        })
+      }
+      const res = { realPath: norm, entries: map }
+      dirCache.set(key, res)
+      return res
+    } catch {
+      dirCache.set(key, null)
+      return null
+    }
+  }
+
+  const resolvePatternMatches = (patternStr: string): MatchedFsItem[] => {
+    const normalized = patternStr.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '')
+    const parts = normalized.split('/')
+    if (parts.length < 2) return []
+
+    let rootPrefix = parts[0]
+    if (/^[a-zA-Z]:$/.test(rootPrefix)) {
+      rootPrefix += '\\'
+    } else if (rootPrefix === '') {
+      rootPrefix = '/'
+    }
+
+    let currentDirs = [rootPrefix]
+    for (let i = 1; i < parts.length; i++) {
+      const seg = parts[i]
+      const isLast = i === parts.length - 1
+      if (seg === '.' || seg === '') continue
+
+      if (seg === '**') {
+        const expanded = [...currentDirs]
+        for (const d of currentDirs) {
+          const info1 = getDirEntries(d)
+          if (!info1) continue
+          for (const e1 of info1.entries.values()) {
+            if (e1.isDir) {
+              const p1 = path.join(info1.realPath, e1.name)
+              expanded.push(p1)
+              const info2 = getDirEntries(p1)
+              if (info2) {
+                for (const e2 of info2.entries.values()) {
+                  if (e2.isDir) expanded.push(path.join(info2.realPath, e2.name))
+                }
+              }
+            }
+          }
+        }
+        currentDirs = expanded
+        continue
+      }
+
+      const hasWildcard = seg.includes('*') || seg.includes('?')
+      const nextDirs: string[] = []
+      const matchedItems: MatchedFsItem[] = []
+
+      if (!hasWildcard) {
+        const segLower = seg.toLowerCase()
+        for (const d of currentDirs) {
+          const info = getDirEntries(d)
+          if (!info) continue
+          const found = info.entries.get(segLower)
+          if (found) {
+            const full = path.join(info.realPath, found.name)
+            if (isLast) {
+              matchedItems.push({
+                fullPath: full,
+                isDir: found.isDir,
+                isFile: found.isFile,
+                parentDir: info.realPath,
+                name: found.name,
+              })
+            } else if (found.isDir) {
+              nextDirs.push(full)
+            }
+          }
+        }
+      } else {
+        const rx = globSegmentToRegex(seg)
+        for (const d of currentDirs) {
+          const info = getDirEntries(d)
+          if (!info) continue
+          for (const found of info.entries.values()) {
+            if (rx.test(found.name)) {
+              const full = path.join(info.realPath, found.name)
+              if (isLast) {
+                matchedItems.push({
+                  fullPath: full,
+                  isDir: found.isDir,
+                  isFile: found.isFile,
+                  parentDir: info.realPath,
+                  name: found.name,
+                })
+              } else if (found.isDir) {
+                nextDirs.push(full)
+              }
+            }
+          }
+        }
+      }
+
+      if (isLast) return matchedItems
+      currentDirs = nextDirs
+      if (currentDirs.length === 0) return []
+    }
+    return []
+  }
+
+  const computeSyncRootAndIgnores = (
+    matches: MatchedFsItem[],
+    forbiddenRootsSet: Set<string>
+  ): { localPath: string; ignoredPaths: string[] } | null => {
+    const valid = matches.filter((m) => m.isFile || (m.isDir && hasAnyRealFile(m.fullPath)))
+    if (valid.length === 0) return null
+
+    const groups = new Map<string, MatchedFsItem[]>()
+    for (const m of valid) {
+      const targetDir = m.isDir ? m.fullPath : m.parentDir
+      const parts = path.resolve(targetDir).split(path.sep)
+      const groupKey = parts.slice(0, Math.min(parts.length, 6)).join(path.sep).toLowerCase()
+      if (!groups.has(groupKey)) groups.set(groupKey, [])
+      groups.get(groupKey)!.push(m)
+    }
+
+    let bestGroup: MatchedFsItem[] | null = null
+    for (const g of groups.values()) {
+      if (!bestGroup || g.length > bestGroup.length) {
+        bestGroup = g
+      }
+    }
+    if (!bestGroup) return null
+
+    if (bestGroup.length === 1 && bestGroup[0].isDir) {
+      return {
+        localPath: bestGroup[0].fullPath,
+        ignoredPaths: [],
+      }
+    }
+
+    const dirLists = bestGroup.map((m) =>
+      path.resolve(m.isDir ? m.fullPath : m.parentDir).split(path.sep)
+    )
+    let commonParts = [...dirLists[0]]
+    for (let i = 1; i < dirLists.length; i++) {
+      const cur = dirLists[i]
+      let j = 0
+      while (
+        j < commonParts.length &&
+        j < cur.length &&
+        commonParts[j].toLowerCase() === cur[j].toLowerCase()
+      ) {
+        j++
+      }
+      commonParts = commonParts.slice(0, j)
+    }
+
+    let localPath = commonParts.join(path.sep)
+    if (
+      bestGroup.every(
+        (m) => m.isDir && path.resolve(m.fullPath).toLowerCase() === localPath.toLowerCase()
+      )
+    ) {
+      return {
+        localPath,
+        ignoredPaths: [],
+      }
+    }
+
+    if (forbiddenRootsSet.has(localPath.toLowerCase())) {
+      const first = bestGroup[0]
+      localPath = first.isDir ? first.fullPath : first.parentDir
+      if (first.isDir) {
+        return { localPath, ignoredPaths: [] }
+      }
+    }
+
+    const ignoredPaths: string[] = []
+    const normLocal = path.resolve(localPath)
+
+    const matchedRels = bestGroup
+      .map((m) => ({
+        rel: path.relative(normLocal, path.resolve(m.fullPath)).split(path.sep).join('/'),
+        isDir: m.isDir,
+      }))
+      .filter((r) => r.rel && !r.rel.startsWith('..'))
+
+    if (matchedRels.length === 0) {
+      return { localPath: normLocal, ignoredPaths: [] }
+    }
+
+    const scanDirForIgnores = (currentRel: string) => {
+      const absDir = currentRel ? path.join(normLocal, ...currentRel.split('/')) : normLocal
+      const info = getDirEntries(absDir)
+      if (!info) return
+      for (const entry of info.entries.values()) {
+        const childRel = currentRel ? `${currentRel}/${entry.name}` : entry.name
+        const childRelLower = childRel.toLowerCase()
+
+        const exactMatch = matchedRels.find((m) => m.rel.toLowerCase() === childRelLower)
+        if (exactMatch) continue
+
+        const isAncestorOfMatch =
+          entry.isDir && matchedRels.some((m) => m.rel.toLowerCase().startsWith(`${childRelLower}/`))
+        if (isAncestorOfMatch) {
+          scanDirForIgnores(childRel)
+          continue
+        }
+
+        ignoredPaths.push(childRel)
+      }
+    }
+
+    scanDirForIgnores('')
+
+    return {
+      localPath: normLocal,
+      ignoredPaths,
+    }
+  }
+
+  const home = os.homedir()
+  const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming')
+  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local')
+  const localAppDataLow = path.join(home, 'AppData', 'LocalLow')
+  const winPublic = process.env.PUBLIC || 'C:\\Users\\Public'
+  const programData = process.env.PROGRAMDATA || 'C:\\ProgramData'
+  const winDir = process.env.WINDIR || 'C:\\Windows'
+  const osUserName = os.userInfo().username
+  const xdgData = process.env.XDG_DATA_HOME || path.join(home, '.local', 'share')
+  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, '.config')
+
+  const docCandidates = [
+    path.join(home, 'Documents'),
+    path.join(home, 'Documentos'),
+    path.join(home, 'OneDrive', 'Documents'),
+    path.join(home, 'OneDrive', 'Documentos'),
+  ].filter((p) => fs.existsSync(p))
+
+  const steamRoots = [
+    'C:\\Program Files (x86)\\Steam',
+    'C:\\Program Files\\Steam',
+    'D:\\Steam',
+    'D:\\SteamLibrary',
+    'E:\\SteamLibrary',
+    'F:\\SteamLibrary',
+    path.join(home, '.steam', 'steam'),
+    path.join(home, '.local', 'share', 'Steam'),
+  ].filter((p) => fs.existsSync(p))
+
+  for (const sr of [...steamRoots]) {
+    const vdf = path.join(sr, 'steamapps', 'libraryfolders.vdf')
+    if (fs.existsSync(vdf)) {
+      try {
+        const content = fs.readFileSync(vdf, 'utf-8')
+        const matches = content.matchAll(/"path"\s+"([^"]+)"/g)
+        for (const m of matches) {
+          const libPath = m[1].replace(/\\\\/g, '\\')
+          if (fs.existsSync(libPath) && !steamRoots.includes(libPath)) {
+            steamRoots.push(libPath)
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  const forbiddenRootsSet = new Set(
+    [
+      home,
+      appData,
+      localAppData,
+      localAppDataLow,
+      winPublic,
+      programData,
+      winDir,
+      xdgData,
+      xdgConfig,
+      path.join(home, 'Saved Games'),
+      ...docCandidates,
+      ...docCandidates.map((d) => path.join(d, 'My Games')),
+      ...steamRoots,
+    ].map((p) => path.resolve(p).toLowerCase())
+  )
+
+  const currentOs = process.platform === 'linux' ? 'linux' : 'windows'
+
+  const rawDetected: Array<{
+    name: string
+    searchTitle: string
+    steamId: number | null
+    localPath: string
+    ignoredPaths: string[]
+    source: 'ludusavi' | 'emuvault' | 'emuatlas'
+    emulatorName: string | null
+    systemName: string | null
+  }> = []
+
+  for (const game of games) {
+    const matchedPaths: MatchedFsItem[] = []
+    for (const f of game.files) {
+      if (f.osList.length > 0 && !f.osList.includes(currentOs) && !f.osList.includes('dos')) {
+        continue
+      }
+      if (f.tags.length > 0 && !f.tags.includes('save')) {
+        continue
+      }
+
+      const pat = f.pattern
+      if (pat.includes('<registry>') || pat.startsWith('HKEY_')) continue
+
+      let expandedList = [pat]
+      const replaceToken = (token: string, values: string[]) => {
+        if (!expandedList.some((s) => s.includes(token))) return
+        const next: string[] = []
+        for (const item of expandedList) {
+          if (item.includes(token)) {
+            for (const v of values) next.push(item.split(token).join(v))
+          } else {
+            next.push(item)
+          }
+        }
+        expandedList = next
+      }
+
+      replaceToken('<home>', [home])
+      replaceToken('<winAppData>', [appData])
+      replaceToken('<winLocalAppData>', [localAppData])
+      replaceToken('<winLocalAppDataLow>', [localAppDataLow])
+      replaceToken('<winDocuments>', docCandidates)
+      replaceToken('<winPublic>', [winPublic])
+      replaceToken('<winProgramData>', [programData])
+      replaceToken('<winDir>', [winDir])
+      replaceToken('<xdgData>', [xdgData])
+      replaceToken('<xdgConfig>', [xdgConfig])
+      replaceToken('<osUserName>', [osUserName])
+      replaceToken('<storeUserId>', ['*'])
+      if (game.steamId) {
+        replaceToken('<storeGameId>', [String(game.steamId)])
+      }
+
+      if (expandedList.some((s) => s.includes('<base>'))) {
+        const dirNames = game.installDirs.length > 0 ? game.installDirs : [game.name]
+        const bases: string[] = []
+        for (const sr of steamRoots) {
+          for (const dn of dirNames) {
+            bases.push(path.join(sr, 'steamapps', 'common', dn))
+          }
+        }
+        replaceToken('<base>', bases)
+      }
+
+      if (expandedList.some((s) => s.includes('<root>'))) {
+        replaceToken('<root>', steamRoots)
+      }
+
+      if (expandedList.some((s) => s.includes('<'))) continue
+
+      for (const exp of expandedList) {
+        for (const m of resolvePatternMatches(exp)) {
+          if (!forbiddenRootsSet.has(path.resolve(m.fullPath).toLowerCase())) {
+            matchedPaths.push(m)
+          }
+        }
+      }
+    }
+
+    if (matchedPaths.length > 0) {
+      const computed = computeSyncRootAndIgnores(matchedPaths, forbiddenRootsSet)
+      if (computed) {
+        rawDetected.push({
+          name: game.name,
+          searchTitle: game.name,
+          steamId: game.steamId,
+          localPath: computed.localPath,
+          ignoredPaths: computed.ignoredPaths,
+          source: 'ludusavi',
+          emulatorName: null,
+          systemName: 'PC',
+        })
+      }
+    }
+  }
+
+  // ============================================================================
+  // ESCÁNER DE EMULADORES (COMPATIBILIDAD CON EMUVAULT Y EMUATLAS)
+  // ============================================================================
+  const emuDetected = scanEmulatorSavesWithEmuAtlasAndEmuVault({
+    home,
+    appData,
+    localAppData,
+    xdgData,
+    xdgConfig,
+    docCandidates,
+  })
+  rawDetected.push(...emuDetected)
+
+  // Cargar caché local de carátulas de SteamGridDB
+  const sgdbCachePath = path.join(app.getPath('userData'), 'steamgriddb-cache.json')
+  let sgdbCache: Record<string, { coverUrl: string | null; thumbUrl: string | null }> = {}
+  try {
+    if (fs.existsSync(sgdbCachePath)) {
+      sgdbCache = JSON.parse(fs.readFileSync(sgdbCachePath, 'utf-8')) || {}
+    }
+  } catch {
+    sgdbCache = {}
+  }
+
+  const results: DetectedGameSaveItem[] = []
+  const batchSize = 8
+  for (let i = 0; i < rawDetected.length; i += batchSize) {
+    const batch = rawDetected.slice(i, i + batchSize)
+    const batchResolved = await Promise.all(
+      batch.map(async (item) => {
+        const cover = await fetchSteamGridDbCoverForGame(
+          item.searchTitle || item.name,
+          item.steamId,
+          sgdbCache
+        )
+        return {
+          id: `${item.name}-${item.localPath}`,
+          name: item.name,
+          steamId: item.steamId,
+          localPath: item.localPath,
+          ignoredPaths: item.ignoredPaths,
+          coverUrl: cover.coverUrl,
+          thumbUrl: cover.thumbUrl,
+          source: item.source,
+          emulatorName: item.emulatorName,
+          systemName: item.systemName,
+        }
+      })
+    )
+    results.push(...batchResolved)
+  }
+
+  try {
+    fs.writeFileSync(sgdbCachePath, JSON.stringify(sgdbCache, null, 2), 'utf-8')
+  } catch {
+    // ignore
+  }
+
+  results.sort((a, b) => a.name.localeCompare(b.name))
+  return results
+}
+
+function normalizeGameMatchKey(raw: string): string {
+  return (raw || '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function inferEmulatorFromSyncMeta(sync: SyncMetadata): string | null {
+  if (sync.emulatorName) return sync.emulatorName
+  const n = (sync.name || '').toLowerCase()
+  if (n.includes('(wii u)') || n.includes('cemu')) return 'Cemu'
+  if (n.includes('(switch)') || n.includes('eden') || n.includes('yuzu') || n.includes('ryujinx')) return 'Switch'
+  if (n.includes('(3ds)') || n.includes('azahar') || n.includes('citra')) return 'Azahar'
+  if (n.includes('(gamecube)') || n.includes('dolphin')) return 'Dolphin'
+  if (n.includes('(ps2)') || n.includes('pcsx2')) return 'PCSX2'
+  if (n.includes('(psp)') || n.includes('ppsspp')) return 'PPSSPP'
+  if (n.includes('(ps3)') || n.includes('rpcs3')) return 'RPCS3'
+  if (n.includes('(ps1)') || n.includes('duckstation')) return 'DuckStation'
+  if (n.includes('(gba)') || n.includes('mgba')) return 'mGBA'
+  if (n.includes('(nds)') || n.includes('melonds')) return 'melonDS'
+  if (n.includes('(snes)') || n.includes('snes9x')) return 'Snes9x'
+  if (n.includes('retroarch')) return 'RetroArch'
+  return null
+}
+
+async function findAutoSavePathsForSyncs(
+  syncs: SyncMetadata[]
+): Promise<Record<string, AutoDetectedSaveMatch>> {
+  const matches: Record<string, AutoDetectedSaveMatch> = {}
+  const targetSyncs = syncs.filter((s) => Boolean(s.isGameSave))
+  if (targetSyncs.length === 0) return matches
+
+  const home = os.homedir()
+  const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming')
+  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local')
+  const localAppDataLow = path.join(home, 'AppData', 'LocalLow')
+  const winPublic = process.env.PUBLIC || 'C:\\Users\\Public'
+  const programData = process.env.PROGRAMDATA || 'C:\\ProgramData'
+  const winDir = process.env.WINDIR || 'C:\\Windows'
+  const osUserName = os.userInfo().username
+  const xdgData = process.env.XDG_DATA_HOME || path.join(home, '.local', 'share')
+  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, '.config')
+
+  const docCandidates = [
+    path.join(home, 'Documents'),
+    path.join(home, 'Documentos'),
+    path.join(home, 'OneDrive', 'Documents'),
+    path.join(home, 'OneDrive', 'Documentos'),
+  ].filter((p) => fs.existsSync(p))
+
+  const steamRoots = [
+    'C:\\Program Files (x86)\\Steam',
+    'C:\\Program Files\\Steam',
+    'D:\\Steam',
+    'D:\\SteamLibrary',
+    'E:\\SteamLibrary',
+    'F:\\SteamLibrary',
+    path.join(home, '.steam', 'steam'),
+    path.join(home, '.local', 'share', 'Steam'),
+  ].filter((p) => fs.existsSync(p))
+
+  for (const sr of [...steamRoots]) {
+    const vdf = path.join(sr, 'steamapps', 'libraryfolders.vdf')
+    if (fs.existsSync(vdf)) {
+      try {
+        const content = fs.readFileSync(vdf, 'utf-8')
+        const vdfMatches = content.matchAll(/"path"\s+"([^"]+)"/g)
+        for (const m of vdfMatches) {
+          const libPath = m[1].replace(/\\\\/g, '\\')
+          if (fs.existsSync(libPath) && !steamRoots.includes(libPath)) {
+            steamRoots.push(libPath)
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // 1. Escanear emuladores en esta PC (sin llamadas de red a SteamGridDB)
+  const emuDetected = scanEmulatorSavesWithEmuAtlasAndEmuVault({
+    home,
+    appData,
+    localAppData,
+    xdgData,
+    xdgConfig,
+    docCandidates,
+  })
+
+  for (const sync of targetSyncs) {
+    const syncKey = normalizeGameMatchKey(sync.name)
+    if (!syncKey) continue
+    const wantedEmu = inferEmulatorFromSyncMeta(sync)?.toLowerCase() || ''
+
+    const candidates = emuDetected.filter((item) => {
+      const k1 = normalizeGameMatchKey(item.name)
+      const k2 = normalizeGameMatchKey(item.searchTitle)
+      return k1 === syncKey || k2 === syncKey
+    })
+
+    if (candidates.length > 0) {
+      const best =
+        (wantedEmu
+          ? candidates.find((c) => (c.emulatorName || '').toLowerCase().includes(wantedEmu))
+          : null) || candidates[0]
+
+      matches[sync.id] = {
+        syncId: sync.id,
+        localPath: best.localPath,
+        ignoredPaths: best.ignoredPaths,
+        emulatorName: best.emulatorName,
+        systemName: best.systemName,
+        matchType: 'exact-save',
+      }
+    }
+  }
+
+  // 2. Para los que faltan, buscar en Ludusavi Manifest filtrando solo los juegos pendientes
+  const remainingForLudusavi = targetSyncs.filter((s) => !matches[s.id])
+  if (remainingForLudusavi.length > 0) {
+    try {
+      const games = await ensureLudusaviManifestGames()
+      const currentOs = process.platform === 'linux' ? 'linux' : 'windows'
+
+      const forbiddenRootsSet = new Set(
+        [
+          home,
+          appData,
+          localAppData,
+          localAppDataLow,
+          winPublic,
+          programData,
+          winDir,
+          xdgData,
+          xdgConfig,
+          path.join(home, 'Saved Games'),
+          ...docCandidates,
+          ...docCandidates.map((d) => path.join(d, 'My Games')),
+          ...steamRoots,
+        ].map((p) => path.resolve(p).toLowerCase())
+      )
+
+      const resolveExistingPattern = (pat: string): string | null => {
+        const clean = pat
+          .replace(/<home>/g, home)
+          .replace(/<winAppData>/g, appData)
+          .replace(/<winLocalAppData>/g, localAppData)
+          .replace(/<winLocalAppDataLow>/g, localAppDataLow)
+          .replace(/<winDocuments>/g, docCandidates[0] || path.join(home, 'Documents'))
+          .replace(/<winPublic>/g, winPublic)
+          .replace(/<winProgramData>/g, programData)
+          .replace(/<winDir>/g, winDir)
+          .replace(/<osUserName>/g, osUserName)
+          .replace(/<xdgData>/g, xdgData)
+          .replace(/<xdgConfig>/g, xdgConfig)
+
+        if (clean.includes('<')) return null
+        const noGlob = clean.split('*')[0].split('?')[0].replace(/[\\/]+$/, '')
+        if (!noGlob) return null
+        const resolved = path.resolve(noGlob)
+        if (forbiddenRootsSet.has(resolved.toLowerCase())) return null
+        if (fs.existsSync(resolved)) {
+          try {
+            return fs.statSync(resolved).isFile() ? path.dirname(resolved) : resolved
+          } catch {
+            return null
+          }
+        }
+        return null
+      }
+
+      const resolveConcreteLudusaviPath = (pat: string): string | null => {
+        if (pat.includes('*') || pat.includes('?')) return null
+        const clean = pat
+          .replace(/<home>/g, home)
+          .replace(/<winAppData>/g, appData)
+          .replace(/<winLocalAppData>/g, localAppData)
+          .replace(/<winLocalAppDataLow>/g, localAppDataLow)
+          .replace(/<winDocuments>/g, docCandidates[0] || path.join(home, 'Documents'))
+          .replace(/<winPublic>/g, winPublic)
+          .replace(/<winProgramData>/g, programData)
+          .replace(/<winDir>/g, winDir)
+          .replace(/<osUserName>/g, osUserName)
+          .replace(/<xdgData>/g, xdgData)
+          .replace(/<xdgConfig>/g, xdgConfig)
+
+        if (clean.includes('<')) return null
+        const resolved = path.resolve(clean)
+        if (forbiddenRootsSet.has(resolved.toLowerCase())) return null
+        const parent = path.dirname(resolved)
+        if (fs.existsSync(parent)) {
+          return resolved
+        }
+        return null
+      }
+
+      for (const sync of remainingForLudusavi) {
+        const syncKey = normalizeGameMatchKey(sync.name)
+        const game = games.find((g) => normalizeGameMatchKey(g.name) === syncKey)
+        if (!game) continue
+
+        // Primero verificar si el juego tiene carpeta de save existente o está instalado en Steam
+        let foundExisting: string | null = null
+        let concreteFallback: string | null = null
+
+        const isGameInstalledInSteam = game.installDirs.some((dirName) =>
+          steamRoots.some((sr) => fs.existsSync(path.join(sr, 'steamapps', 'common', dirName)))
+        )
+
+        for (const f of game.files) {
+          if (f.osList.length > 0 && !f.osList.includes(currentOs) && !f.osList.includes('dos')) {
+            continue
+          }
+          if (f.tags.length > 0 && !f.tags.includes('save')) continue
+          if (f.pattern.includes('<registry>') || f.pattern.startsWith('HKEY_')) continue
+
+          const existing = resolveExistingPattern(f.pattern)
+          if (existing) {
+            foundExisting = existing
+            break
+          }
+          if (!concreteFallback && isGameInstalledInSteam) {
+            concreteFallback = resolveConcreteLudusaviPath(f.pattern)
+          }
+        }
+
+        if (foundExisting) {
+          matches[sync.id] = {
+            syncId: sync.id,
+            localPath: foundExisting,
+            matchType: 'exact-save',
+          }
+        } else if (concreteFallback) {
+          matches[sync.id] = {
+            syncId: sync.id,
+            localPath: concreteFallback,
+            matchType: 'ludusavi-path',
+          }
+        }
+      }
+    } catch {
+      // ignore manifest lookup errors
+    }
+  }
+
+  // 3. Fallback para emuladores con carpeta compartida instalada en esta PC aunque aún no exista el save del juego
+  const remainingForEmuRoot = targetSyncs.filter((s) => !matches[s.id])
+  if (remainingForEmuRoot.length > 0) {
+    const emuSaveRoots: Array<{ keys: string[]; dirs: string[] }> = [
+      {
+        keys: ['retroarch'],
+        dirs: [
+          'D:\\Emulation\\saves\\retroarch\\saves',
+          'C:\\Emulation\\saves\\retroarch\\saves',
+          path.join(appData, 'RetroArch', 'saves'),
+          path.join(home, 'Emulation', 'saves', 'retroarch', 'saves'),
+          path.join(xdgConfig, 'retroarch', 'saves'),
+        ],
+      },
+      {
+        keys: ['dolphin', 'gamecube'],
+        dirs: [
+          'D:\\Emulation\\saves\\dolphin\\User\\GC\\USA\\Card A',
+          'C:\\Emulation\\saves\\dolphin\\User\\GC\\USA\\Card A',
+          ...docCandidates.map((d) => path.join(d, 'Dolphin Emulator', 'GC', 'USA', 'Card A')),
+          path.join(appData, 'Dolphin Emulator', 'GC', 'USA', 'Card A'),
+        ],
+      },
+      {
+        keys: ['pcsx2', 'ps2'],
+        dirs: [
+          'D:\\Emulation\\saves\\pcsx2\\memcards',
+          'C:\\Emulation\\saves\\pcsx2\\memcards',
+          ...docCandidates.map((d) => path.join(d, 'PCSX2', 'memcards')),
+          path.join(appData, 'PCSX2', 'memcards'),
+        ],
+      },
+      {
+        keys: ['duckstation', 'ps1'],
+        dirs: [
+          'D:\\Emulation\\saves\\duckstation\\memcards',
+          ...docCandidates.map((d) => path.join(d, 'DuckStation', 'memcards')),
+          path.join(appData, 'DuckStation', 'memcards'),
+        ],
+      },
+      {
+        keys: ['ppsspp', 'psp'],
+        dirs: [
+          'D:\\Emulation\\saves\\ppsspp\\PSP\\SAVEDATA',
+          ...docCandidates.map((d) => path.join(d, 'PPSSPP', 'PSP', 'SAVEDATA')),
+          path.join(appData, 'PPSSPP', 'PSP', 'SAVEDATA'),
+        ],
+      },
+      {
+        keys: ['mgba', 'gba'],
+        dirs: [
+          'D:\\Emulation\\saves\\mgba',
+          path.join(appData, 'mGBA', 'saves'),
+        ],
+      },
+      {
+        keys: ['melonds', 'nds'],
+        dirs: [
+          'D:\\Emulation\\saves\\melonds',
+          path.join(appData, 'melonDS', 'saves'),
+        ],
+      },
+      {
+        keys: ['snes9x', 'snes'],
+        dirs: [
+          'D:\\Emulation\\saves\\snes9x',
+          ...docCandidates.map((d) => path.join(d, 'Snes9x', 'Saves')),
+        ],
+      },
+    ]
+
+    for (const sync of remainingForEmuRoot) {
+      const emu = inferEmulatorFromSyncMeta(sync)?.toLowerCase()
+      if (!emu) continue
+      const entry = emuSaveRoots.find((r) => r.keys.some((k) => emu.includes(k)))
+      if (!entry) continue
+      const existingDir = entry.dirs.find((d) => fs.existsSync(d))
+      if (existingDir) {
+        matches[sync.id] = {
+          syncId: sync.id,
+          localPath: path.resolve(existingDir),
+          emulatorName: sync.emulatorName || inferEmulatorFromSyncMeta(sync),
+          systemName: sync.systemName || null,
+          matchType: 'emulator-root',
+        }
+      }
+    }
+  }
+
+  return matches
 }
 
 process.env.DIST = path.join(__dirname, '../dist')
@@ -2525,76 +4603,146 @@ app.whenReady().then(() => {
       }))
   })
 
+  const downloadImageAsDataUrl = async (params: {
+    imageUrl?: string | null
+    thumbnailUrl?: string | null
+  }): Promise<string> => {
+    const fetchImageBuffer = async (url: string): Promise<{ buf: Buffer; contentType: string }> => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 9000)
+      try {
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          },
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`)
+        }
+        const arrayBuf = await res.arrayBuffer()
+        const buf = Buffer.from(arrayBuf)
+        if (buf.length < 128) {
+          throw new Error('Imagen vacía o inválida')
+        }
+        return {
+          buf,
+          contentType: res.headers.get('content-type') || 'image/jpeg',
+        }
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+
+    const convertBufferToDataUrl = (buf: Buffer, contentType: string): string | null => {
+      const img = nativeImage.createFromBuffer(buf)
+      if (!img.isEmpty()) {
+        const size = img.getSize()
+        const maxWidth = 640
+        const resized =
+          size.width > maxWidth ? img.resize({ width: maxWidth, quality: 'good' }) : img
+        const jpegBuf = resized.toJPEG(82)
+        return `data:image/jpeg;base64,${jpegBuf.toString('base64')}`
+      }
+      if (contentType.includes('image/')) {
+        const cleanMime = contentType.split(';')[0].trim()
+        return `data:${cleanMime};base64,${buf.toString('base64')}`
+      }
+      return null
+    }
+
+    const urlsToTry = [params.imageUrl, params.thumbnailUrl].filter((u): u is string =>
+      Boolean(u && u.trim())
+    )
+
+    let lastErr: unknown = null
+    for (const targetUrl of urlsToTry) {
+      try {
+        const { buf, contentType } = await fetchImageBuffer(targetUrl)
+        const dataUrl = convertBufferToDataUrl(buf, contentType)
+        if (dataUrl) return dataUrl
+      } catch (err) {
+        lastErr = err
+      }
+    }
+
+    throw new Error(
+      lastErr instanceof Error
+        ? `No se pudo descargar la imagen seleccionada: ${lastErr.message}`
+        : 'No se pudo descargar la imagen seleccionada.'
+    )
+  }
+
   ipcMain.handle(
     'cover:downloadOnline',
     async (_e, params: { imageUrl: string; thumbnailUrl?: string }) => {
-      const fetchImageBuffer = async (url: string): Promise<{ buf: Buffer; contentType: string }> => {
-        const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), 9000)
+      return await downloadImageAsDataUrl(params)
+    }
+  )
+
+  ipcMain.handle('games:scanSaves', async () => {
+    return await scanInstalledGameSavesOnPc()
+  })
+
+  ipcMain.handle('games:findAutoSavePaths', async (_e, syncs: SyncMetadata[]) => {
+    return await findAutoSavePathsForSyncs(syncs || [])
+  })
+
+  ipcMain.handle(
+    'games:createSaveSync',
+    async (
+      _e,
+      params: {
+        provider: CloudProvider
+        name: string
+        localPath: string
+        ignoredPaths?: string[]
+        coverUrl?: string | null
+        thumbUrl?: string | null
+        emulatorName?: string | null
+        systemName?: string | null
+      }
+    ) => {
+      const provider: CloudProvider = params.provider || 'gdrive'
+      const safeFolderName =
+        params.name
+          .replace(/[<>:"/\\|?*\x00-\x1F]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim() || 'GameSave'
+
+      const driveFolderPath = `${GAME_SAVES_ROOT_FOLDER}/${safeFolderName}`
+
+      let coverImage: string | null = null
+      if (params.coverUrl || params.thumbUrl) {
         try {
-          const res = await fetch(url, {
-            headers: {
-              'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-              Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-            },
-            signal: controller.signal,
+          coverImage = await downloadImageAsDataUrl({
+            imageUrl: params.coverUrl,
+            thumbnailUrl: params.thumbUrl,
           })
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`)
-          }
-          const arrayBuf = await res.arrayBuffer()
-          const buf = Buffer.from(arrayBuf)
-          if (buf.length < 128) {
-            throw new Error('Imagen vacía o inválida')
-          }
-          return {
-            buf,
-            contentType: res.headers.get('content-type') || 'image/jpeg',
-          }
-        } finally {
-          clearTimeout(timer)
+        } catch {
+          coverImage = null
         }
       }
 
-      const convertBufferToDataUrl = (buf: Buffer, contentType: string): string | null => {
-        const img = nativeImage.createFromBuffer(buf)
-        if (!img.isEmpty()) {
-          const size = img.getSize()
-          const maxWidth = 640
-          const resized =
-            size.width > maxWidth ? img.resize({ width: maxWidth, quality: 'good' }) : img
-          const jpegBuf = resized.toJPEG(82)
-          return `data:image/jpeg;base64,${jpegBuf.toString('base64')}`
-        }
-        if (contentType.includes('image/')) {
-          const cleanMime = contentType.split(';')[0].trim()
-          return `data:${cleanMime};base64,${buf.toString('base64')}`
-        }
-        return null
+      const meta = await rcloneService!.createSyncAndInitialPush({
+        provider,
+        name: params.name.trim(),
+        driveFolderPath,
+        driveFolderName: safeFolderName,
+        localPath: params.localPath,
+        ignoredPaths: params.ignoredPaths || [],
+        coverImage,
+        isGameSave: true,
+        emulatorName: params.emulatorName || null,
+        systemName: params.systemName || null,
+      })
+
+      return {
+        meta,
+        config: loadConfig(),
       }
-
-      // Intentar primero con la imagen completa; si falla o bloquea hotlinking, usar el thumbnail de DuckDuckGo/Bing
-      const urlsToTry = [params.imageUrl, params.thumbnailUrl].filter(
-        (u): u is string => Boolean(u && u.trim())
-      )
-
-      let lastErr: unknown = null
-      for (const targetUrl of urlsToTry) {
-        try {
-          const { buf, contentType } = await fetchImageBuffer(targetUrl)
-          const dataUrl = convertBufferToDataUrl(buf, contentType)
-          if (dataUrl) return dataUrl
-        } catch (err) {
-          lastErr = err
-        }
-      }
-
-      throw new Error(
-        lastErr instanceof Error
-          ? `No se pudo descargar la imagen seleccionada: ${lastErr.message}`
-          : 'No se pudo descargar la imagen seleccionada.'
-      )
     }
   )
 
@@ -2658,6 +4806,7 @@ app.whenReady().then(() => {
         localPath: string
         ignoredPaths?: string[]
         coverImage?: string | null
+        isGameSave?: boolean
       }
     ) => {
       const meta = await rcloneService!.createSyncAndInitialPush(params)

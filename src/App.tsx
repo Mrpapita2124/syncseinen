@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   ArrowDownToLine,
+  ArrowLeft,
   ArrowRight,
   ArrowUpFromLine,
   Check,
@@ -9,6 +10,7 @@ import {
   EyeOff,
   FolderOpen,
   FolderSync,
+  Gamepad2,
   HardDrive,
   ImagePlus,
   Laptop,
@@ -21,15 +23,19 @@ import {
   Plus,
   RefreshCw,
   Rocket,
+  Search,
   Settings,
   ShieldCheck,
+  Sparkles,
   Trash2,
   X,
   XCircle,
 } from 'lucide-react'
 import {
   AppConfig,
+  AutoDetectedSaveMatch,
   CloudProvider,
+  DetectedGameSaveItem,
   SyncMetadata,
   SyncProgressEvent,
   UpdateCheckResult,
@@ -130,12 +136,30 @@ export const App: React.FC = () => {
   const [editingCoverSync, setEditingCoverSync] = useState<SyncMetadata | null>(null)
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [activeSection, setActiveSection] = useState<'files' | 'games'>('files')
   const [theme, setTheme] = useState<'liquid' | 'flat-red'>('liquid')
   const [closeBehavior, setCloseBehavior] = useState<'tray' | 'quit'>('tray')
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null)
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
   const [updateProgress, setUpdateProgress] = useState<UpdateProgressEvent | null>(null)
+
+  // Estados del menú sobrepuesto de Saves de Videojuegos (Ludusavi + EmuAtlas + EmuVault + SteamGridDB)
+  const [isGameScannerOpen, setIsGameScannerOpen] = useState(false)
+  const [gameScannerStep, setGameScannerStep] = useState<'select' | 'configure'>('select')
+  const [scanningGames, setScanningGames] = useState(false)
+  const [detectedGames, setDetectedGames] = useState<DetectedGameSaveItem[]>([])
+  const [gameSearchQuery, setGameSearchQuery] = useState('')
+  const [gameScannerSourceFilter, setGameScannerSourceFilter] = useState<'all' | 'pc' | 'emulators'>('all')
+  const [selectedGameIds, setSelectedGameIds] = useState<string[]>([])
+  const [gameProviderChoices, setGameProviderChoices] = useState<Record<string, CloudProvider>>({})
+  const [syncingGameId, setSyncingGameId] = useState<string | null>(null)
+  const [syncedGameIds, setSyncedGameIds] = useState<Record<string, CloudProvider>>({})
+
+  // Auto-detección de rutas locales en otro dispositivo para saves sin vincular
+  const [autoSaveMatches, setAutoSaveMatches] = useState<Record<string, AutoDetectedSaveMatch>>({})
+  const [scanningAutoPaths, setScanningAutoPaths] = useState(false)
+  const [manualPathInputs, setManualPathInputs] = useState<Record<string, string>>({})
 
   const connectedServices: Record<CloudProvider, boolean> = config?.connectedServices || {
     gdrive: Boolean(config?.isConnected),
@@ -166,11 +190,35 @@ export const App: React.FC = () => {
     }
   }
 
-  const refreshMetadatas = async () => {
+  const runAutoSavePathScan = async (
+    metasList: SyncMetadata[],
+    cfgOverride?: AppConfig | null
+  ) => {
+    const activeCfg = cfgOverride ?? config
+    const unlinkedGames = metasList.filter(
+      (m) => Boolean(m.isGameSave) && !activeCfg?.localMappings[m.id]?.localPath
+    )
+    if (unlinkedGames.length === 0) {
+      setAutoSaveMatches({})
+      return
+    }
+    setScanningAutoPaths(true)
+    try {
+      const found = await window.syncApi.findAutoSavePaths(unlinkedGames)
+      setAutoSaveMatches(found || {})
+    } catch {
+      // ignore auto-scan errors
+    } finally {
+      setScanningAutoPaths(false)
+    }
+  }
+
+  const refreshMetadatas = async (cfgOverride?: AppConfig | null) => {
     setLoadingSyncs(true)
     try {
       const list = await window.syncApi.listSyncMetadatas()
       setMetadatas(list)
+      runAutoSavePathScan(list, cfgOverride)
     } catch (err: unknown) {
       showBanner(
         'error',
@@ -218,7 +266,7 @@ export const App: React.FC = () => {
 
         if (anyConnected) {
           setHasEnteredDashboard(true)
-          await refreshMetadatas()
+          await refreshMetadatas(cfg)
         } else {
           setHasEnteredDashboard(false)
         }
@@ -262,7 +310,7 @@ export const App: React.FC = () => {
       setConfig(updatedCfg)
       setDeviceNameInput(updatedCfg.deviceName)
       showBanner('success', `¡Sesión iniciada en ${label} con éxito mediante rclone!`)
-      await refreshMetadatas()
+      await refreshMetadatas(updatedCfg)
     } catch (err: unknown) {
       const freshCfg = await window.syncApi.getConfig()
       setConfig(freshCfg)
@@ -323,6 +371,7 @@ export const App: React.FC = () => {
     localPath: string
     ignoredPaths?: string[]
     coverImage?: string | null
+    isGameSave?: boolean
   }) => {
     setBusyAction('create')
     const label = PROVIDER_META[params.provider]?.label || 'la nube'
@@ -330,11 +379,123 @@ export const App: React.FC = () => {
       const { meta, config: updatedConfig } = await window.syncApi.createSync(params)
       setConfig(updatedConfig)
       await refreshMetadatas()
+      if (params.isGameSave) {
+        setActiveSection('games')
+      }
       showBanner(
         'success',
         `Sincronización "${meta.name}" creada en ${label}, archivos subidos a "/${meta.driveFolderPath}" y metadata guardada.`
       )
     } finally {
+      setBusyAction(null)
+      setProgress(null)
+    }
+  }
+
+  const runGameSavesScan = async () => {
+    setScanningGames(true)
+    try {
+      const results = await window.syncApi.scanGameSaves()
+      setDetectedGames(results)
+      const defaultProv = activeProviders[0] || 'gdrive'
+      setGameProviderChoices((prev) => {
+        const next = { ...prev }
+        for (const g of results) {
+          if (!next[g.id] || !connectedServices[next[g.id]]) {
+            next[g.id] = defaultProv
+          }
+        }
+        return next
+      })
+    } catch (err: unknown) {
+      showBanner(
+        'error',
+        err instanceof Error
+          ? err.message
+          : 'No se pudo escanear los saves de videojuegos con Ludusavi Manifest'
+      )
+    } finally {
+      setScanningGames(false)
+    }
+  }
+
+  const handleOpenGameScanner = () => {
+    setIsGameScannerOpen(true)
+    setGameScannerStep('select')
+    setGameSearchQuery('')
+    if (detectedGames.length === 0 && !scanningGames) {
+      runGameSavesScan()
+    }
+  }
+
+  const handleToggleGameSelect = (gameId: string) => {
+    setSelectedGameIds((prev) =>
+      prev.includes(gameId) ? prev.filter((id) => id !== gameId) : [...prev, gameId]
+    )
+  }
+
+  const handleSyncAllSelectedGames = async () => {
+    const gamesToSync = detectedGames.filter((g) => selectedGameIds.includes(g.id))
+    if (gamesToSync.length === 0) {
+      setIsGameScannerOpen(false)
+      return
+    }
+
+    setBusyAction('game-sync-batch')
+    setStatusMessage(null)
+    let syncedCount = 0
+    const errors: string[] = []
+
+    try {
+      for (const game of gamesToSync) {
+        const chosenProvider =
+          gameProviderChoices[game.id] && connectedServices[gameProviderChoices[game.id]]
+            ? gameProviderChoices[game.id]
+            : activeProviders[0] || 'gdrive'
+
+        setSyncingGameId(game.id)
+        try {
+          const { config: updatedCfg } = await window.syncApi.createGameSaveSync({
+            provider: chosenProvider,
+            name: game.name,
+            localPath: game.localPath,
+            ignoredPaths: game.ignoredPaths,
+            coverUrl: game.coverUrl || null,
+            thumbUrl: game.thumbUrl || null,
+            emulatorName: game.emulatorName || null,
+            systemName: game.systemName || null,
+          })
+          setConfig(updatedCfg)
+          setSyncedGameIds((prev) => ({
+            ...prev,
+            [game.id]: chosenProvider,
+          }))
+          syncedCount++
+        } catch (err: unknown) {
+          errors.push(
+            `${game.name}: ${err instanceof Error ? err.message : 'Error al sincronizar'}`
+          )
+        }
+      }
+
+      await refreshMetadatas()
+      setActiveSection('games')
+
+      if (errors.length === 0) {
+        setSelectedGameIds([])
+        setIsGameScannerOpen(false)
+        showBanner(
+          'success',
+          `¡Se sincronizaron ${syncedCount} videojuego(s) correctamente en /SyncSeinen_games_saves!`
+        )
+      } else {
+        showBanner(
+          'error',
+          `Se sincronizaron ${syncedCount} de ${gamesToSync.length}. Errores: ${errors.join(' | ')}`
+        )
+      }
+    } finally {
+      setSyncingGameId(null)
       setBusyAction(null)
       setProgress(null)
     }
@@ -406,7 +567,7 @@ export const App: React.FC = () => {
       if (autoPull) {
         const res = await window.syncApi.pullSync(sync.id)
         setConfig(res.config)
-        await refreshMetadatas()
+        await refreshMetadatas(res.config)
         showBanner(
           'success',
           `Directorio asignado y archivos descargados con rclone (Pull) en "${picked}".`
@@ -418,6 +579,80 @@ export const App: React.FC = () => {
       showBanner(
         'error',
         err instanceof Error ? err.message : 'Error al vincular carpeta y descargar archivos'
+      )
+    } finally {
+      setBusyAction(null)
+      setProgress(null)
+    }
+  }
+
+  const handleAutoPullWithDetectedPath = async (
+    sync: SyncMetadata,
+    match: AutoDetectedSaveMatch
+  ) => {
+    setBusyAction(`assign-${sync.id}`)
+    setStatusMessage(null)
+    try {
+      const updatedCfg = await window.syncApi.assignLocalFolder(sync.id, match.localPath)
+      setConfig(updatedCfg)
+      const res = await window.syncApi.pullSync(sync.id)
+      setConfig(res.config)
+      await refreshMetadatas(res.config)
+      showBanner(
+        'success',
+        `Sincronización automática (Pull) completada para "${sync.name}" en "${match.localPath}".`
+      )
+    } catch (err: unknown) {
+      showBanner(
+        'error',
+        err instanceof Error
+          ? err.message
+          : `Error al sincronizar automáticamente "${sync.name}"`
+      )
+    } finally {
+      setBusyAction(null)
+      setProgress(null)
+    }
+  }
+
+  const handleBrowseManualPath = async (sync: SyncMetadata) => {
+    const picked = await window.syncApi.pickLocalFolder()
+    if (!picked) return
+    setManualPathInputs((prev) => ({
+      ...prev,
+      [sync.id]: picked,
+    }))
+  }
+
+  const handleLinkManualPathAndPull = async (sync: SyncMetadata, autoPull: boolean) => {
+    let targetPath = (manualPathInputs[sync.id] || '').trim()
+    if (!targetPath) {
+      const picked = await window.syncApi.pickLocalFolder()
+      if (!picked) return
+      targetPath = picked
+      setManualPathInputs((prev) => ({ ...prev, [sync.id]: picked }))
+    }
+
+    setBusyAction(`assign-${sync.id}`)
+    setStatusMessage(null)
+    try {
+      const updatedCfg = await window.syncApi.assignLocalFolder(sync.id, targetPath)
+      setConfig(updatedCfg)
+      if (autoPull) {
+        const res = await window.syncApi.pullSync(sync.id)
+        setConfig(res.config)
+        await refreshMetadatas(res.config)
+        showBanner(
+          'success',
+          `Ruta vinculada y archivos descargados (Pull) en "${targetPath}".`
+        )
+      } else {
+        showBanner('success', `Ruta local asignada a "${sync.name}": ${targetPath}`)
+      }
+    } catch (err: unknown) {
+      showBanner(
+        'error',
+        err instanceof Error ? err.message : 'Error al vincular la ruta ingresada'
       )
     } finally {
       setBusyAction(null)
@@ -768,6 +1003,30 @@ export const App: React.FC = () => {
   }
 
   const showOnboardingLoginView = !hasEnteredDashboard || !isAuthenticated
+  const sectionMetadatas = metadatas.filter(
+    (m) => Boolean(m.isGameSave) === (activeSection === 'games')
+  )
+  const pcDetectedCount = detectedGames.filter(
+    (g) => !g.source || g.source === 'ludusavi'
+  ).length
+  const emulatorDetectedCount = detectedGames.filter(
+    (g) => g.source === 'emuatlas' || g.source === 'emuvault' || Boolean(g.emulatorName)
+  ).length
+  const filteredDetectedGames = detectedGames.filter((g) => {
+    const isEmu = g.source === 'emuatlas' || g.source === 'emuvault' || Boolean(g.emulatorName)
+    if (gameScannerSourceFilter === 'pc' && isEmu) return false
+    if (gameScannerSourceFilter === 'emulators' && !isEmu) return false
+
+    const q = gameSearchQuery.trim().toLowerCase()
+    if (!q) return true
+    return (
+      g.name.toLowerCase().includes(q) ||
+      g.localPath.toLowerCase().includes(q) ||
+      Boolean(g.emulatorName && g.emulatorName.toLowerCase().includes(q)) ||
+      Boolean(g.systemName && g.systemName.toLowerCase().includes(q))
+    )
+  })
+  const selectedGameObjects = detectedGames.filter((g) => selectedGameIds.includes(g.id))
 
   return (
     <div
@@ -1091,6 +1350,528 @@ export const App: React.FC = () => {
         </div>
       )}
 
+      {/* Menú Sobrepuesto de Saves de Videojuegos (Estilo Pausa • Ludusavi + SteamGridDB) */}
+      {isGameScannerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !syncingGameId) {
+              setIsGameScannerOpen(false)
+            }
+          }}
+        >
+          <div
+            className={`w-full max-w-5xl rounded-3xl overflow-hidden flex flex-col max-h-[90vh] ${
+              theme === 'flat-red'
+                ? 'bg-[#121215] border-2 border-red-600 shadow-2xl'
+                : 'liquid-glass-modal shadow-2xl border border-sky-400/35'
+            }`}
+          >
+            {/* Header del Menú de Pausa de Saves de Videojuegos */}
+            <div className="px-7 py-5 border-b border-white/15 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`p-2.5 rounded-2xl ${
+                    theme === 'flat-red'
+                      ? 'bg-red-600/20 border border-red-500 text-red-400'
+                      : 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-400'
+                  }`}
+                >
+                  <Gamepad2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] liquid-text-muted block">
+                    {gameScannerStep === 'select'
+                      ? 'PASO 1 • ESCÁNER LUDUSAVI + EMUATLAS + EMUVAULT + STEAMGRIDDB'
+                      : 'PASO 2 • SINCRONIZACIÓN POR JUEGO (SYNCSEINEN_GAMES_SAVES)'}
+                  </span>
+                  <h2 className="text-xl font-black tracking-tight liquid-text-primary">
+                    {gameScannerStep === 'select'
+                      ? 'Saves de Videojuegos y Emuladores Encontrados en tu PC'
+                      : 'Sincronizar Videojuegos Seleccionados'}
+                  </h2>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {gameScannerStep === 'select' && (
+                  <button
+                    type="button"
+                    disabled={scanningGames}
+                    onClick={runGameSavesScan}
+                    className="px-3.5 py-2 rounded-2xl liquid-glass-sub hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${scanningGames ? 'animate-spin text-sky-400' : ''}`} />
+                    Reescanear PC
+                  </button>
+                )}
+
+                {gameScannerStep === 'configure' && (
+                  <button
+                    type="button"
+                    disabled={Boolean(syncingGameId)}
+                    onClick={() => setGameScannerStep('select')}
+                    className="px-3.5 py-2 rounded-2xl liquid-glass-sub hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    Volver a selección
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  disabled={Boolean(syncingGameId)}
+                  onClick={() => setIsGameScannerOpen(false)}
+                  className="px-4 py-2 rounded-2xl liquid-glass-sub hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+                >
+                  <X className="w-4 h-4" />
+                  Cerrar
+                </button>
+              </div>
+            </div>
+
+            {gameScannerStep === 'select' ? (
+              /* ==================== PASO 1: FILTRAR Y SELECCIONAR JUEGOS ==================== */
+              <>
+                {/* Barra de búsqueda de texto, filtro de origen (PC vs Emuladores) y contador de seleccionados */}
+                <div className="px-7 py-4 border-b border-white/10 flex flex-col gap-3 bg-black/20">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="relative flex-1 min-w-[240px]">
+                      <Search className="w-4 h-4 liquid-text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={gameSearchQuery}
+                        onChange={(e) => setGameSearchQuery(e.target.value)}
+                        placeholder="Buscar por nombre del juego, emulador, consola o ruta..."
+                        className="w-full liquid-glass-sub rounded-2xl pl-10 pr-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold px-3 py-1.5 rounded-xl liquid-glass-sub liquid-text-secondary">
+                        {filteredDetectedGames.length} encontrado(s) &bull;{' '}
+                        <strong className="text-emerald-400">{selectedGameIds.length} seleccionado(s)</strong>
+                      </span>
+
+                      {filteredDetectedGames.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allVisibleSelected = filteredDetectedGames.every((g) =>
+                              selectedGameIds.includes(g.id)
+                            )
+                            if (allVisibleSelected) {
+                              const visibleSet = new Set(filteredDetectedGames.map((g) => g.id))
+                              setSelectedGameIds((prev) => prev.filter((id) => !visibleSet.has(id)))
+                            } else {
+                              setSelectedGameIds((prev) =>
+                                Array.from(new Set([...prev, ...filteredDetectedGames.map((g) => g.id)]))
+                              )
+                            }
+                          }}
+                          className="px-3 py-2 rounded-xl liquid-glass-sub hover:bg-white/10 text-xs font-semibold liquid-text-primary transition"
+                        >
+                          {filteredDetectedGames.every((g) => selectedGameIds.includes(g.id))
+                            ? 'Deseleccionar visibles'
+                            : 'Seleccionar visibles'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Filtros por origen: Todos | Juegos de PC (Ludusavi) | Emuladores (EmuAtlas & EmuVault) */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setGameScannerSourceFilter('all')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
+                        gameScannerSourceFilter === 'all'
+                          ? theme === 'flat-red'
+                            ? 'bg-red-600 border-red-500 text-white shadow'
+                            : 'bg-sky-500/25 border-sky-400 text-sky-300 shadow'
+                          : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
+                      }`}
+                    >
+                      Todos ({detectedGames.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGameScannerSourceFilter('pc')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
+                        gameScannerSourceFilter === 'pc'
+                          ? theme === 'flat-red'
+                            ? 'bg-red-600 border-red-500 text-white shadow'
+                            : 'bg-emerald-500/25 border-emerald-400 text-emerald-300 shadow'
+                          : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
+                      }`}
+                    >
+                      PC &bull; Ludusavi ({pcDetectedCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGameScannerSourceFilter('emulators')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
+                        gameScannerSourceFilter === 'emulators'
+                          ? theme === 'flat-red'
+                            ? 'bg-red-600 border-red-500 text-white shadow'
+                            : 'bg-indigo-500/25 border-indigo-400 text-indigo-300 shadow'
+                          : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
+                      }`}
+                    >
+                      Emuladores &bull; EmuAtlas &amp; EmuVault ({emulatorDetectedCount})
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cuerpo con cuadrícula de juegos detectados */}
+                <div className="p-7 overflow-y-auto flex-1 min-h-[340px]">
+                  {scanningGames ? (
+                    <div className="h-72 flex flex-col items-center justify-center gap-3 text-center">
+                      <Loader2 className="w-9 h-9 animate-spin text-sky-400" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-extrabold liquid-text-primary">
+                          Escaneando saves de PC (Ludusavi) y Emuladores (EmuAtlas &amp; EmuVault)...
+                        </p>
+                        <p className="text-xs liquid-text-muted">
+                          Buscando partidas guardadas en tu PC, perfiles de emuladores y carátulas de SteamGridDB.
+                        </p>
+                      </div>
+                    </div>
+                  ) : filteredDetectedGames.length === 0 ? (
+                    <div className="h-72 flex flex-col items-center justify-center gap-3 text-center">
+                      <Gamepad2 className="w-10 h-10 liquid-text-muted" />
+                      <p className="text-sm font-bold liquid-text-primary">
+                        {detectedGames.length === 0
+                          ? 'No se detectaron saves de videojuegos ni emuladores automáticamente en esta PC.'
+                          : `No hay resultados para el filtro actual${gameSearchQuery ? ` ("${gameSearchQuery}")` : ''}.`}
+                      </p>
+                      <p className="text-xs liquid-text-muted max-w-md">
+                        También puedes agregar cualquier juego manualmente usando el botón{' '}
+                        <strong>+ Nueva Sincronización</strong> y activando la casilla de videojuego.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {filteredDetectedGames.map((game) => {
+                        const isSelected = selectedGameIds.includes(game.id)
+                        const alreadySynced = metadatas.some(
+                          (m) =>
+                            Boolean(m.isGameSave) &&
+                            m.name.toLowerCase() === game.name.toLowerCase()
+                        )
+                        const isEmulatorSave =
+                          game.source === 'emuatlas' ||
+                          game.source === 'emuvault' ||
+                          Boolean(game.emulatorName)
+
+                        return (
+                          <div
+                            key={game.id}
+                            onClick={() => handleToggleGameSelect(game.id)}
+                            className={`rounded-2xl overflow-hidden cursor-pointer border transition flex flex-col justify-between group ${
+                              isSelected
+                                ? theme === 'flat-red'
+                                  ? 'bg-[#1a1416] border-2 border-red-500 shadow-lg shadow-red-600/20'
+                                  : 'liquid-glass-sub border-2 border-emerald-400 shadow-lg shadow-emerald-500/15'
+                                : 'liquid-glass-sub border-white/10 hover:border-white/30'
+                            }`}
+                          >
+                            {/* Carátula de SteamGridDB */}
+                            <div className="relative h-36 w-full overflow-hidden bg-gradient-to-br from-indigo-500/20 via-slate-900 to-emerald-500/20 border-b border-white/10">
+                              {game.thumbUrl || game.coverUrl ? (
+                                <img
+                                  src={game.thumbUrl || game.coverUrl || ''}
+                                  alt={game.name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-sky-400/70">
+                                  <Gamepad2 className="w-8 h-8" />
+                                  <span className="text-[10px] liquid-text-muted">SteamGridDB</span>
+                                </div>
+                              )}
+
+                              {/* Etiqueta de Emulador / Origen arriba a la izquierda */}
+                              <div className="absolute top-2.5 left-2.5 flex items-center gap-1 max-w-[65%]">
+                                {isEmulatorSave ? (
+                                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-950/85 text-indigo-300 border border-indigo-400/50 backdrop-blur-md truncate">
+                                    {game.emulatorName || 'Emulador'}
+                                    {game.systemName ? ` • ${game.systemName}` : ''}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/70 text-emerald-300 border border-emerald-400/40 backdrop-blur-md truncate">
+                                    PC &bull; Ludusavi
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Indicador de Selección arriba a la derecha */}
+                              <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                                {alreadySynced && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/70 text-sky-300 border border-sky-400/40 backdrop-blur-md">
+                                    Ya en tu nube
+                                  </span>
+                                )}
+                                <div
+                                  className={`w-7 h-7 rounded-xl flex items-center justify-center border transition ${
+                                    isSelected
+                                      ? theme === 'flat-red'
+                                        ? 'bg-red-600 border-red-400 text-white shadow'
+                                        : 'bg-emerald-500 border-emerald-300 text-slate-950 shadow'
+                                      : 'bg-black/60 border-white/30 text-white/70'
+                                  }`}
+                                >
+                                  <Check className="w-4 h-4 stroke-[3]" />
+                                </div>
+                              </div>
+
+                              {/* Nombre sobrepuesto abajo */}
+                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent p-3 pt-7">
+                                <h4 className="text-sm font-extrabold text-white truncate drop-shadow">
+                                  {game.name}
+                                </h4>
+                              </div>
+                            </div>
+
+                            {/* Ruta local del save */}
+                            <div className="p-3 flex items-center gap-2 text-xs">
+                              <HardDrive className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                              <code
+                                className="text-[11px] liquid-text-secondary font-mono truncate"
+                                title={game.localPath}
+                              >
+                                {game.localPath}
+                              </code>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Paso 1 */}
+                <div className="px-7 py-4 border-t border-white/15 flex items-center justify-between gap-4">
+                  <span className="text-xs liquid-text-muted">
+                    Selecciona los videojuegos cuyos saves quieras respaldar y presiona{' '}
+                    <strong>Continuar</strong>.
+                  </span>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsGameScannerOpen(false)}
+                      className="px-4 py-2.5 rounded-2xl liquid-glass-sub liquid-text-secondary text-xs font-bold hover:opacity-90 transition"
+                    >
+                      Cancelar
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={selectedGameIds.length === 0 || scanningGames}
+                      onClick={() => setGameScannerStep('configure')}
+                      className={`px-6 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition shadow-lg disabled:opacity-40 ${
+                        theme === 'flat-red'
+                          ? 'bg-red-600 hover:bg-red-500 text-white'
+                          : 'bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-500 hover:from-emerald-400 hover:to-indigo-400 text-white'
+                      }`}
+                    >
+                      <span>Continuar ({selectedGameIds.length})</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* ==================== PASO 2: LISTA DE JUEGOS SELECCIONADOS PARA SINCRONIZAR UNO POR UNO ==================== */
+              <>
+                {/* Barra de progreso en vivo cuando se está sincronizando un juego en la lista */}
+                {(syncingGameId || progress) && (
+                  <div className="bg-indigo-600/20 backdrop-blur-xl border-b border-indigo-400/30 px-7 py-3">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Loader2 className="w-4 h-4 animate-spin text-sky-400 flex-shrink-0" />
+                          <span className="font-bold liquid-text-primary truncate">
+                            {progress
+                              ? `${progress.syncName}: ${progress.phase}`
+                              : 'Subiendo archivos de guardado a SyncSeinen_games_saves...'}
+                          </span>
+                        </div>
+                        <span className="text-sky-400 font-mono font-bold">
+                          {progress ? `${progress.current}%` : '0%'}
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-black/30 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-indigo-500 via-sky-400 to-emerald-400 transition-all duration-200"
+                          style={{
+                            width: `${progress ? Math.min(100, Math.max(8, progress.current)) : 12}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="p-7 overflow-y-auto flex-1 space-y-3 min-h-[340px]">
+                  <p className="text-xs liquid-text-secondary mb-2">
+                    Elige el servicio en el menú desplegable de cada fila y presiona{' '}
+                    <strong>Finalizar y sincronizar ({selectedGameObjects.length})</strong> abajo para comenzar a respaldar tus partidas en{' '}
+                    <code className="text-sky-400 font-mono font-bold">/SyncSeinen_games_saves/&lt;Juego&gt;</code>.
+                  </p>
+
+                  {selectedGameObjects.map((game) => {
+                    const selectedProv =
+                      gameProviderChoices[game.id] && connectedServices[gameProviderChoices[game.id]]
+                        ? gameProviderChoices[game.id]
+                        : activeProviders[0] || 'gdrive'
+                    const isThisSyncing = syncingGameId === game.id
+                    const syncedProv = syncedGameIds[game.id]
+
+                    return (
+                      <div
+                        key={game.id}
+                        className={`rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 border transition ${
+                          isThisSyncing
+                            ? 'liquid-glass-sub border-sky-400/70 shadow-lg shadow-sky-500/10'
+                            : syncedProv
+                              ? theme === 'flat-red'
+                                ? 'bg-[#18181c] border-red-500/80'
+                                : 'liquid-glass-sub border-emerald-400/50'
+                              : 'liquid-glass-sub border-white/10'
+                        }`}
+                      >
+                        {/* Izquierda: Carátula + Nombre + Ruta destino */}
+                        <div className="flex items-center gap-3.5 min-w-[240px] flex-1">
+                          <div className="w-20 h-14 rounded-xl overflow-hidden liquid-glass flex-shrink-0 border border-white/15">
+                            {game.thumbUrl || game.coverUrl ? (
+                              <img
+                                src={game.thumbUrl || game.coverUrl || ''}
+                                alt={game.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-sky-400/70">
+                                <Gamepad2 className="w-5 h-5" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="text-sm font-extrabold liquid-text-primary truncate">
+                                {game.name}
+                              </h4>
+                              {(game.source === 'emuatlas' ||
+                                game.source === 'emuvault' ||
+                                Boolean(game.emulatorName)) && (
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
+                                  {game.emulatorName || 'Emulador'}
+                                  {game.systemName ? ` • ${game.systemName}` : ''}
+                                </span>
+                              )}
+                              {isThisSyncing && (
+                                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/40 flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin text-sky-400" />
+                                  Sincronizando...
+                                </span>
+                              )}
+                              {!isThisSyncing && syncedProv && (
+                                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  Sincronizado en {PROVIDER_META[syncedProv].label}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-sky-400 font-mono truncate mt-0.5">
+                              /SyncSeinen_games_saves/{game.name}
+                            </p>
+                            <p className="text-[11px] liquid-text-muted font-mono truncate">
+                              {game.localPath}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Derecha: Solamente el menú desplegable de Servicio */}
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <select
+                            disabled={Boolean(syncingGameId) || busyAction === 'game-sync-batch'}
+                            value={selectedProv}
+                            onChange={(e) => {
+                              const nextProv = e.target.value as CloudProvider
+                              setGameProviderChoices((prev) => ({
+                                ...prev,
+                                [game.id]: nextProv,
+                              }))
+                            }}
+                            className={`rounded-xl px-3.5 py-2.5 text-xs font-bold border focus:outline-none cursor-pointer ${
+                              theme === 'flat-red'
+                                ? 'bg-[#18181c] border-zinc-700 text-white'
+                                : 'liquid-glass text-white border-white/20 bg-slate-900/90'
+                            }`}
+                          >
+                            {activeProviders.map((prov) => (
+                              <option
+                                key={prov}
+                                value={prov}
+                                className="bg-slate-900 text-white"
+                              >
+                                {PROVIDER_META[prov].label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Footer Paso 2 */}
+                <div className="px-7 py-4 border-t border-white/15 flex items-center justify-between gap-4">
+                  <button
+                    type="button"
+                    disabled={Boolean(syncingGameId) || busyAction === 'game-sync-batch'}
+                    onClick={() => setGameScannerStep('select')}
+                    className="px-4 py-2.5 rounded-2xl liquid-glass-sub liquid-text-primary text-xs font-bold flex items-center gap-1.5 hover:opacity-90 transition disabled:opacity-40"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Elegir más juegos
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      Boolean(syncingGameId) ||
+                      busyAction === 'game-sync-batch' ||
+                      selectedGameObjects.length === 0
+                    }
+                    onClick={handleSyncAllSelectedGames}
+                    className={`px-6 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition shadow-lg disabled:opacity-40 ${
+                      theme === 'flat-red'
+                        ? 'bg-red-600 hover:bg-red-500 text-white'
+                        : 'bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:to-emerald-400 text-white'
+                    }`}
+                  >
+                    {Boolean(syncingGameId) || busyAction === 'game-sync-batch' ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Sincronizando juegos seleccionados...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowUpFromLine className="w-4 h-4" />
+                        <span>Finalizar y sincronizar ({selectedGameObjects.length})</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Progress Bar Banner (cuando el cuadro modal de creación no está abierto) */}
       {(progress || busyAction === 'create') && !isCreateModalOpen && (
         <div className="liquid-glass border-x-0 border-t-0 px-6 py-3 z-20">
@@ -1200,20 +1981,36 @@ export const App: React.FC = () => {
             </div>
           </div>
         ) : (
-          /* Vista de Sincronizaciones Dividida por Servicios */
+          /* Vista de Sincronizaciones Dividida en 2: Archivos Normales y Saves de Juegos */
           <div className="space-y-8">
             {/* Barra Superior General */}
             <div className="liquid-glass rounded-3xl p-5 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-base font-extrabold liquid-text-primary flex items-center gap-2.5">
-                  Panel de Sincronizaciones por Servicio
+                  {activeSection === 'games' ? (
+                    <>
+                      <Gamepad2 className="w-5 h-5 text-emerald-400" />
+                      <span>Saves de Videojuegos por Servicio</span>
+                    </>
+                  ) : (
+                    <span>Archivos Normales por Servicio</span>
+                  )}
                   <span className="text-xs px-3 py-0.5 rounded-full liquid-glass-sub liquid-text-secondary font-semibold">
-                    {activeProviders.length} servicio(s) activo(s) &bull; {metadatas.length} sync(s) en total
+                    {activeProviders.length} servicio(s) activo(s) &bull; {sectionMetadatas.length} sync(s)
                   </span>
                 </h2>
                 <p className="text-xs liquid-text-muted mt-1">
-                  Cada servicio tiene sus propios botones de <strong>Pull</strong> y{' '}
-                  <strong>Push</strong>. Puedes agregar más cuentas desde el botón de engrane.
+                  {activeSection === 'games' ? (
+                    <>
+                      Respaldo automático de partidas en{' '}
+                      <code className="text-sky-400 font-mono">SyncSeinen_games_saves</code> con Ludusavi, EmuAtlas, EmuVault y SteamGridDB.
+                    </>
+                  ) : (
+                    <>
+                      Cada servicio tiene sus propios botones de <strong>Pull</strong> y{' '}
+                      <strong>Push</strong>. Puedes agregar más cuentas desde el botón de engrane.
+                    </>
+                  )}
                 </p>
               </div>
 
@@ -1249,13 +2046,47 @@ export const App: React.FC = () => {
                 </div>
 
                 <button
-                  onClick={refreshMetadatas}
+                  onClick={() => refreshMetadatas()}
                   disabled={loadingSyncs || Boolean(busyAction)}
                   className="px-3.5 py-2.5 rounded-2xl liquid-glass-sub hover:opacity-90 disabled:opacity-50 liquid-text-primary text-xs font-semibold flex items-center gap-1.5 transition"
                   title="Volver a leer metadatas de todos los servicios conectados"
                 >
                   <RefreshCw className={`w-4 h-4 ${loadingSyncs ? 'animate-spin text-sky-400' : ''}`} />
                   Actualizar todo
+                </button>
+
+                {/* Opción para cambiar la vista entre Archivos Normales y Saves de Juegos (al lado del botón de Crear Sincronización) */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveSection((prev) => (prev === 'files' ? 'games' : 'files'))
+                  }
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 border transition shadow-md ${
+                    activeSection === 'games'
+                      ? theme === 'flat-red'
+                        ? 'bg-[#18181c] border-red-500 text-red-400 hover:bg-red-600 hover:text-white'
+                        : 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300 hover:bg-emerald-500/30'
+                      : theme === 'flat-red'
+                        ? 'bg-[#18181c] border-zinc-700 text-white hover:border-red-500'
+                        : 'liquid-glass-sub border-sky-400/40 text-sky-300 hover:bg-white/10'
+                  }`}
+                  title={
+                    activeSection === 'files'
+                      ? 'Ir al apartado de Saves de Videojuegos'
+                      : 'Volver al apartado de Archivos Normales'
+                  }
+                >
+                  {activeSection === 'files' ? (
+                    <>
+                      <Gamepad2 className="w-4 h-4 text-emerald-400" />
+                      <span>Saves de Juegos</span>
+                    </>
+                  ) : (
+                    <>
+                      <FolderSync className="w-4 h-4 text-sky-400" />
+                      <span>Archivos Normales</span>
+                    </>
+                  )}
                 </button>
 
                 <button
@@ -1269,555 +2100,873 @@ export const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Secciones Divididas por Cada Servicio Conectado */}
-            {activeProviders.map((provider) => {
-              const pInfo = PROVIDER_META[provider]
-              const serviceMetas = metadatas.filter((m) => (m.provider || 'gdrive') === provider)
-              const serviceLinkedCount = serviceMetas.filter((m) =>
-                Boolean(config?.localMappings[m.id]?.localPath)
-              ).length
+            {activeSection === 'games' && sectionMetadatas.length === 0 ? (
+              /* Pantalla vacía de Saves de Videojuegos: al pulsar donde deberían ir las sincronizaciones se abre el menú estilo pausa de escaneo */
+              <div
+                onClick={() => !busyAction && handleOpenGameScanner()}
+                className={`rounded-3xl p-14 text-center cursor-pointer border-2 border-dashed transition group flex flex-col items-center justify-center gap-4 min-h-[360px] ${
+                  theme === 'flat-red'
+                    ? 'bg-[#121215]/90 border-red-500/50 hover:border-red-500 hover:bg-[#18181c]'
+                    : 'liquid-glass border-emerald-400/40 hover:border-emerald-400/80 hover:bg-white/5'
+                }`}
+                title="Haz clic aquí para escanear los saves de videojuegos instalados en tu PC"
+              >
+                <div
+                  className={`w-20 h-20 rounded-3xl flex items-center justify-center transition group-hover:scale-110 ${
+                    theme === 'flat-red'
+                      ? 'bg-red-600/20 border border-red-500 text-red-400'
+                      : 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 shadow-lg shadow-emerald-500/15'
+                  }`}
+                >
+                  <Gamepad2 className="w-10 h-10" />
+                </div>
 
-              return (
-                <section key={provider} className="space-y-4">
-                  {/* Encabezado limpio en línea: (icono) Nombre -------- Pull  Push */}
-                  <div className="flex items-center gap-3.5 px-1">
-                    <div className="flex items-center gap-2.5 flex-shrink-0">
-                      <div className="w-8 h-8 rounded-xl liquid-glass-sub flex items-center justify-center">
-                        <ProviderIcon provider={provider} className="w-4 h-4" />
-                      </div>
-                      <h3 className="text-base font-extrabold liquid-text-primary tracking-tight">
-                        {pInfo.label}
-                      </h3>
+                <div className="max-w-lg space-y-2">
+                  <h3 className="text-xl font-black liquid-text-primary">
+                    Haz clic aquí para buscar Saves de Videojuegos y Emuladores en tu PC
+                  </h3>
+                  <p className="text-xs liquid-text-secondary leading-relaxed">
+                    Al pulsar en esta área se abrirá el menú de detección con el manifest de{' '}
+                    <strong>Ludusavi</strong>, perfiles de emuladores de <strong>EmuAtlas</strong> &amp;{' '}
+                    <strong>EmuVault</strong> y carátulas de <strong>SteamGridDB</strong> para que selecciones y sincronices tus partidas guardadas.
+                  </p>
+                </div>
+
+                <span
+                  className={`mt-1 px-5 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 shadow-lg transition ${
+                    theme === 'flat-red'
+                      ? 'bg-red-600 group-hover:bg-red-500 text-white'
+                      : 'bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-500 text-white'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Escanear Saves de Videojuegos y Emuladores</span>
+                </span>
+              </div>
+            ) : (
+              <>
+                {/* En la vista de videojuegos cuando ya hay juegos, mostrar barra/área rápida para volver a abrir el escáner */}
+                {activeSection === 'games' && (
+                  <div
+                    onClick={() => !busyAction && handleOpenGameScanner()}
+                    className={`rounded-2xl px-5 py-3.5 cursor-pointer border border-dashed flex flex-wrap items-center justify-between gap-3 transition ${
+                      theme === 'flat-red'
+                        ? 'bg-[#141418] border-red-500/50 hover:border-red-500'
+                        : 'liquid-glass-sub border-emerald-400/40 hover:border-emerald-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Gamepad2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                      <span className="text-xs font-bold liquid-text-primary">
+                        ¿Tienes más videojuegos o emuladores instalados? Haz clic aquí para escanear saves con Ludusavi, EmuAtlas, EmuVault y SteamGridDB.
+                      </span>
                     </div>
-
-                    {/* Línea divisoria horizontal */}
-                    <div
-                      className={`flex-1 h-px ${
-                        theme === 'flat-red' ? 'bg-zinc-800' : 'bg-white/15'
-                      }`}
-                    />
-
-                    {/* Botones de Pull y Push para toda la sección del servicio */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => handlePullAll(provider)}
-                        disabled={serviceLinkedCount === 0 || Boolean(busyAction)}
-                        className="px-3.5 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500 border border-sky-400/40 text-sky-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 transition"
-                        title={`Hacer Pull a todas las sincronizaciones vinculadas en ${pInfo.label}`}
-                      >
-                        {busyAction === `pull-all-${provider}` ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <ArrowDownToLine className="w-3.5 h-3.5" />
-                        )}
-                        Pull
-                      </button>
-
-                      <button
-                        onClick={() => handlePushAll(provider)}
-                        disabled={serviceLinkedCount === 0 || Boolean(busyAction)}
-                        className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 border border-emerald-400/40 text-emerald-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 transition"
-                        title={`Hacer Push a todas las sincronizaciones vinculadas en ${pInfo.label}`}
-                      >
-                        {busyAction === `push-all-${provider}` ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <ArrowUpFromLine className="w-3.5 h-3.5" />
-                        )}
-                        Push
-                      </button>
-                    </div>
+                    <span className="text-xs font-extrabold text-emerald-400 underline">
+                      Abrir escáner de saves
+                    </span>
                   </div>
+                )}
 
-                  {/* Lista o Cuadrícula de Sincronizaciones de este Servicio */}
-                  {loadingSyncs && serviceMetas.length === 0 ? (
-                    <div className="liquid-glass rounded-3xl p-8 flex flex-col items-center justify-center liquid-text-muted gap-3">
-                      <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
-                      <p className="text-xs font-medium">
-                        Consultando sincronizaciones en {pInfo.label}...
-                      </p>
-                    </div>
-                  ) : serviceMetas.length === 0 ? (
-                    <div className="liquid-glass rounded-3xl p-6 text-center">
-                      <p className="text-xs liquid-text-muted">
-                        No hay sincronizaciones registradas en <strong>{pInfo.label}</strong>. Usa el botón superior <strong>+ Nueva Sincronización</strong> para agregar una.
-                      </p>
-                    </div>
-                  ) : viewMode === 'grid' ? (
-                    /* VISTA EN CUADRÍCULA DE CARTAS (GRID VIEW) */
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {serviceMetas.map((sync) => {
-                        const localMapping = config?.localMappings[sync.id]
-                        const isLinked = Boolean(localMapping?.localPath)
-                        const effectiveIgnored = Array.from(
-                          new Set([
-                            ...(sync.ignoredPaths || []),
-                            ...(localMapping?.ignoredPaths || []),
-                          ])
-                        )
-                        const isThisBusy =
-                          busyAction === `push-${sync.id}` ||
-                          busyAction === `pull-${sync.id}` ||
-                          busyAction === `assign-${sync.id}` ||
-                          busyAction === `delete-${sync.id}` ||
-                          busyAction === `ignore-${sync.id}` ||
-                          busyAction === `cover-${sync.id}`
+                {/* Secciones Divididas por Cada Servicio Conectado */}
+                {activeProviders.map((provider) => {
+                  const pInfo = PROVIDER_META[provider]
+                  const isSyncPendingPull = (sync: SyncMetadata): boolean => {
+                    const currentDev = (config?.deviceName || '').trim()
+                    const lastDev = (sync.lastPushedByDevice || sync.createdByDevice || '').trim()
+                    if (!currentDev || !lastDev || currentDev === lastDev) return false
+                    const localMapping = config?.localMappings[sync.id]
+                    if (localMapping?.lastPulledAt && sync.lastPushedAt) {
+                      const pulledMs = Date.parse(localMapping.lastPulledAt)
+                      const pushedMs = Date.parse(sync.lastPushedAt)
+                      if (!Number.isNaN(pulledMs) && !Number.isNaN(pushedMs) && pulledMs >= pushedMs) {
+                        return false
+                      }
+                    }
+                    return true
+                  }
+                  const serviceMetas = sectionMetadatas
+                    .filter((m) => (m.provider || 'gdrive') === provider)
+                    .sort((a, b) => {
+                      const aPending = isSyncPendingPull(a) ? 1 : 0
+                      const bPending = isSyncPendingPull(b) ? 1 : 0
+                      return bPending - aPending
+                    })
+                  const serviceLinkedCount = serviceMetas.filter((m) =>
+                    Boolean(config?.localMappings[m.id]?.localPath)
+                  ).length
 
-                        return (
-                          <div
-                            key={sync.id}
-                            className="liquid-glass-card rounded-3xl overflow-hidden flex flex-col justify-between group"
+                  return (
+                    <section key={provider} className="space-y-4">
+                      {/* Encabezado limpio en línea: (icono) Nombre -------- Pull  Push */}
+                      <div className="flex items-center gap-3.5 px-1">
+                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                          <div className="w-8 h-8 rounded-xl liquid-glass-sub flex items-center justify-center">
+                            <ProviderIcon provider={provider} className="w-4 h-4" />
+                          </div>
+                          <h3 className="text-base font-extrabold liquid-text-primary tracking-tight">
+                            {pInfo.label}
+                          </h3>
+                        </div>
+
+                        {/* Línea divisoria horizontal */}
+                        <div
+                          className={`flex-1 h-px ${
+                            theme === 'flat-red' ? 'bg-zinc-800' : 'bg-white/15'
+                          }`}
+                        />
+
+                        {/* Botones de Pull y Push para toda la sección del servicio */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => handlePullAll(provider)}
+                            disabled={serviceLinkedCount === 0 || Boolean(busyAction)}
+                            className="px-3.5 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500 border border-sky-400/40 text-sky-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 transition"
+                            title={`Hacer Pull a todas las sincronizaciones vinculadas en ${pInfo.label}`}
                           >
-                            <div>
-                              {/* Cover Image Header */}
-                              <div className="relative h-44 w-full overflow-hidden bg-gradient-to-br from-indigo-500/25 via-sky-500/20 to-emerald-500/25 border-b border-white/15">
-                                {sync.coverImage ? (
-                                  <img
-                                    src={sync.coverImage}
-                                    alt={sync.name}
-                                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-sky-400/70">
-                                    <FolderSync className="w-10 h-10 stroke-[1.5]" />
-                                    <span className="text-xs font-medium liquid-text-muted">
-                                      Sin carátula
-                                    </span>
-                                  </div>
-                                )}
+                            {busyAction === `pull-all-${provider}` ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <ArrowDownToLine className="w-3.5 h-3.5" />
+                            )}
+                            Pull
+                          </button>
 
-                                {/* Top Floating Badges on Cover */}
-                                <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
-                                  {isLinked ? (
-                                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md text-emerald-300 border border-emerald-400/40 flex items-center gap-1 shadow">
-                                      <Link2 className="w-3 h-3" />
-                                      Vinculada
-                                    </span>
-                                  ) : (
-                                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md text-amber-300 border border-amber-400/40 shadow">
-                                      Sin vincular en PC
-                                    </span>
-                                  )}
+                          <button
+                            onClick={() => handlePushAll(provider)}
+                            disabled={serviceLinkedCount === 0 || Boolean(busyAction)}
+                            className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 border border-emerald-400/40 text-emerald-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 transition"
+                            title={`Hacer Push a todas las sincronizaciones vinculadas en ${pInfo.label}`}
+                          >
+                            {busyAction === `push-all-${provider}` ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <ArrowUpFromLine className="w-3.5 h-3.5" />
+                            )}
+                            Push
+                          </button>
+                        </div>
+                      </div>
 
-                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                                    <button
-                                      type="button"
-                                      disabled={Boolean(busyAction)}
-                                      onClick={() => handleChangeCoverForSync(sync)}
-                                      className="px-2.5 py-1 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md text-white text-[11px] font-medium flex items-center gap-1 border border-white/20 transition"
-                                      title="Cambiar imagen de carátula"
-                                    >
-                                      <ImagePlus className="w-3 h-3 text-sky-300" />
-                                      {sync.coverImage ? 'Cambiar' : 'Carátula'}
-                                    </button>
-                                    {sync.coverImage && (
-                                      <button
-                                        type="button"
-                                        disabled={Boolean(busyAction)}
-                                        onClick={() => handleRemoveCoverForSync(sync)}
-                                        className="p-1 rounded-full bg-black/65 hover:bg-rose-600/80 backdrop-blur-md text-white border border-white/20 transition"
-                                        title="Quitar carátula"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </button>
+                      {/* Lista o Cuadrícula de Sincronizaciones de este Servicio */}
+                      {loadingSyncs && serviceMetas.length === 0 ? (
+                        <div className="liquid-glass rounded-3xl p-8 flex flex-col items-center justify-center liquid-text-muted gap-3">
+                          <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
+                          <p className="text-xs font-medium">
+                            Consultando sincronizaciones en {pInfo.label}...
+                          </p>
+                        </div>
+                      ) : serviceMetas.length === 0 ? (
+                        activeSection === 'games' ? (
+                          <div
+                            onClick={() => !busyAction && handleOpenGameScanner()}
+                            className="liquid-glass rounded-3xl p-6 text-center cursor-pointer border border-dashed border-emerald-400/35 hover:border-emerald-400 transition"
+                          >
+                            <p className="text-xs liquid-text-secondary">
+                              No hay saves de videojuegos sincronizados en{' '}
+                              <strong>{pInfo.label}</strong>.{' '}
+                              <span className="text-emerald-400 font-bold underline">
+                                Haz clic aquí para escanear tus juegos instalados
+                              </span>
+                              .
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="liquid-glass rounded-3xl p-6 text-center">
+                            <p className="text-xs liquid-text-muted">
+                              No hay sincronizaciones registradas en <strong>{pInfo.label}</strong>. Usa el botón superior <strong>+ Nueva Sincronización</strong> para agregar una.
+                            </p>
+                          </div>
+                        )
+                      ) : viewMode === 'grid' ? (
+                        /* VISTA EN CUADRÍCULA DE CARTAS (GRID VIEW) */
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {serviceMetas.map((sync) => {
+                            const localMapping = config?.localMappings[sync.id]
+                            const isLinked = Boolean(localMapping?.localPath)
+                            const isGame = Boolean(sync.isGameSave) || activeSection === 'games'
+                            const isPendingPull = isSyncPendingPull(sync)
+                            const autoMatch = !isLinked ? autoSaveMatches[sync.id] : undefined
+                            const effectiveIgnored = Array.from(
+                              new Set([
+                                ...(sync.ignoredPaths || []),
+                                ...(localMapping?.ignoredPaths || []),
+                              ])
+                            )
+                            const isThisBusy =
+                              busyAction === `push-${sync.id}` ||
+                              busyAction === `pull-${sync.id}` ||
+                              busyAction === `assign-${sync.id}` ||
+                              busyAction === `delete-${sync.id}` ||
+                              busyAction === `ignore-${sync.id}` ||
+                              busyAction === `cover-${sync.id}`
+
+                            return (
+                              <div
+                                key={sync.id}
+                                className={`liquid-glass-card rounded-3xl overflow-hidden flex flex-col justify-between group ${
+                                  isPendingPull
+                                    ? theme === 'flat-red'
+                                      ? 'ring-2 ring-red-500/80'
+                                      : 'ring-2 ring-sky-400/70 shadow-lg shadow-sky-500/15'
+                                    : ''
+                                }`}
+                              >
+                                <div>
+                                  {/* Cover Image Header */}
+                                  <div className="relative h-44 w-full overflow-hidden bg-gradient-to-br from-indigo-500/25 via-sky-500/20 to-emerald-500/25 border-b border-white/15">
+                                    {sync.coverImage ? (
+                                      <img
+                                        src={sync.coverImage}
+                                        alt={sync.name}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-sky-400/70">
+                                        {isGame ? (
+                                          <Gamepad2 className="w-10 h-10 stroke-[1.5]" />
+                                        ) : (
+                                          <FolderSync className="w-10 h-10 stroke-[1.5]" />
+                                        )}
+                                        <span className="text-xs font-medium liquid-text-muted">
+                                          Sin carátula
+                                        </span>
+                                      </div>
                                     )}
-                                  </div>
-                                </div>
 
-                                {/* Bottom Title Overlay on Cover */}
-                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
-                                  <h3 className="text-base font-extrabold text-white truncate drop-shadow">
-                                    {sync.name}
-                                  </h3>
-                                  <p className="text-[11px] text-sky-300 font-mono truncate flex items-center gap-1">
-                                    <Cloud className="w-3 h-3 flex-shrink-0" />/{sync.driveFolderPath}
-                                  </p>
-                                </div>
-                              </div>
+                                    {/* Top Floating Badges on Cover */}
+                                    <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        {isPendingPull && (
+                                          <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-sky-500/90 text-white border border-sky-300/60 flex items-center gap-1 shadow">
+                                            <ArrowDownToLine className="w-3 h-3" />
+                                            Pendiente de Pull
+                                          </span>
+                                        )}
+                                        {isLinked ? (
+                                          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md text-emerald-300 border border-emerald-400/40 flex items-center gap-1 shadow">
+                                            <Link2 className="w-3 h-3" />
+                                            Vinculada
+                                          </span>
+                                        ) : (
+                                          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md text-amber-300 border border-amber-400/40 shadow">
+                                            Sin vincular en PC
+                                          </span>
+                                        )}
+                                      </div>
 
-                              {/* Card Body */}
-                              <div className="p-4 space-y-3">
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                  <div className="liquid-glass-sub rounded-2xl p-2.5">
-                                    <span className="liquid-text-muted block text-[10px]">
-                                      Último Push
-                                    </span>
-                                    <span className="text-emerald-400 font-bold flex items-center gap-1 mt-0.5 truncate">
-                                      <Laptop className="w-3 h-3 flex-shrink-0" />
-                                      {sync.lastPushedByDevice || sync.createdByDevice || 'N/A'}
-                                    </span>
-                                  </div>
-
-                                  <div className="liquid-glass-sub rounded-2xl p-2.5">
-                                    <span className="liquid-text-muted block text-[10px]">
-                                      Archivos / Fecha
-                                    </span>
-                                    <span className="liquid-text-primary font-semibold block mt-0.5 truncate">
-                                      {sync.lastPushedFileCount} arch. &bull;{' '}
-                                      {formatDate(sync.lastPushedAt)}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {isLinked ? (
-                                  <div className="liquid-glass-sub rounded-2xl p-2.5 space-y-2">
-                                    <div className="flex items-center gap-1.5 text-xs min-w-0">
-                                      <HardDrive className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                                      <code className="liquid-text-secondary truncate font-mono text-[11px]">
-                                        {localMapping?.localPath}
-                                      </code>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/10">
-                                      <button
-                                        onClick={() => setEditingIgnoreSync(sync)}
-                                        disabled={Boolean(busyAction)}
-                                        className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 text-[11px] font-semibold flex items-center gap-1 transition"
-                                      >
-                                        <EyeOff className="w-3 h-3" />
-                                        Ignorar ({effectiveIgnored.length})
-                                      </button>
-                                      <div className="flex items-center gap-1">
+                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
                                         <button
-                                          onClick={() =>
-                                            window.syncApi.openLocalPath(localMapping!.localPath)
-                                          }
-                                          className="px-2 py-1 rounded-lg liquid-glass liquid-text-secondary text-[11px] hover:opacity-90"
-                                          title="Abrir carpeta"
-                                        >
-                                          Abrir
-                                        </button>
-                                        <button
-                                          onClick={() => handleAssignLocalFolderAndPull(sync, false)}
+                                          type="button"
                                           disabled={Boolean(busyAction)}
-                                          className="px-2 py-1 rounded-lg liquid-glass liquid-text-secondary text-[11px] hover:opacity-90"
+                                          onClick={() => handleChangeCoverForSync(sync)}
+                                          className="px-2.5 py-1 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md text-white text-[11px] font-medium flex items-center gap-1 border border-white/20 transition"
+                                          title="Cambiar imagen de carátula"
                                         >
-                                          Ruta
+                                          <ImagePlus className="w-3 h-3 text-sky-300" />
+                                          {sync.coverImage ? 'Cambiar' : 'Carátula'}
                                         </button>
-                                        <button
-                                          onClick={() => handleUnlinkLocal(sync)}
-                                          disabled={Boolean(busyAction)}
-                                          className="p-1 rounded-lg liquid-glass text-rose-400 hover:opacity-90"
-                                          title="Desvincular de esta PC"
-                                        >
-                                          <Link2Off className="w-3 h-3" />
-                                        </button>
+                                        {sync.coverImage && (
+                                          <button
+                                            type="button"
+                                            disabled={Boolean(busyAction)}
+                                            onClick={() => handleRemoveCoverForSync(sync)}
+                                            className="p-1 rounded-full bg-black/65 hover:bg-rose-600/80 backdrop-blur-md text-white border border-white/20 transition"
+                                            title="Quitar carátula"
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
-                                  </div>
-                                ) : (
-                                  <div className="liquid-glass-sub rounded-2xl p-3 space-y-2 border-amber-400/30">
-                                    <p className="text-[11px] liquid-text-secondary">
-                                      Asígnale una carpeta local en esta PC para sincronizar:
-                                    </p>
-                                    <div className="flex items-center gap-1.5">
-                                      <button
-                                        onClick={() => handleAssignLocalFolderAndPull(sync, true)}
-                                        disabled={Boolean(busyAction)}
-                                        className="flex-1 py-1.5 px-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1 transition"
-                                      >
-                                        <ArrowDownToLine className="w-3.5 h-3.5" />
-                                        Vincular y Pull
-                                      </button>
-                                      <button
-                                        onClick={() => setEditingIgnoreSync(sync)}
-                                        disabled={Boolean(busyAction)}
-                                        className="p-1.5 rounded-xl liquid-glass text-amber-400"
-                                        title="Ignorar archivos"
-                                      >
-                                        <EyeOff className="w-4 h-4" />
-                                      </button>
+
+                                    {/* Bottom Title Overlay on Cover */}
+                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
+                                      <h3 className="text-base font-extrabold text-white truncate drop-shadow">
+                                        {sync.name}
+                                      </h3>
+                                      <p className="text-[11px] text-sky-300 font-mono truncate flex items-center gap-1">
+                                        <Cloud className="w-3 h-3 flex-shrink-0" />/{sync.driveFolderPath}
+                                      </p>
                                     </div>
                                   </div>
-                                )}
+
+                                  {/* Card Body */}
+                                  <div className="p-4 space-y-3">
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                      <div className="liquid-glass-sub rounded-2xl p-2.5">
+                                        <span className="liquid-text-muted block text-[10px]">
+                                          Último Push
+                                        </span>
+                                        <span className="text-emerald-400 font-bold flex items-center gap-1 mt-0.5 truncate">
+                                          <Laptop className="w-3 h-3 flex-shrink-0" />
+                                          {sync.lastPushedByDevice || sync.createdByDevice || 'N/A'}
+                                        </span>
+                                      </div>
+
+                                      <div className="liquid-glass-sub rounded-2xl p-2.5">
+                                        <span className="liquid-text-muted block text-[10px]">
+                                          Archivos / Fecha
+                                        </span>
+                                        <span className="liquid-text-primary font-semibold block mt-0.5 truncate">
+                                          {sync.lastPushedFileCount} arch. &bull;{' '}
+                                          {formatDate(sync.lastPushedAt)}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {isLinked ? (
+                                      <div className="liquid-glass-sub rounded-2xl p-2.5 space-y-2">
+                                        <div className="flex items-center gap-1.5 text-xs min-w-0">
+                                          <HardDrive className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                                          <code className="liquid-text-secondary truncate font-mono text-[11px]">
+                                            {localMapping?.localPath}
+                                          </code>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/10">
+                                          {!isGame ? (
+                                            <button
+                                              onClick={() => setEditingIgnoreSync(sync)}
+                                              disabled={Boolean(busyAction)}
+                                              className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 text-[11px] font-semibold flex items-center gap-1 transition"
+                                            >
+                                              <EyeOff className="w-3 h-3" />
+                                              Ignorar ({effectiveIgnored.length})
+                                            </button>
+                                          ) : (
+                                            <span className="text-[11px] liquid-text-muted font-medium">
+                                              Carpeta local vinculada
+                                            </span>
+                                          )}
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              onClick={() =>
+                                                window.syncApi.openLocalPath(localMapping!.localPath)
+                                              }
+                                              className="px-2 py-1 rounded-lg liquid-glass liquid-text-secondary text-[11px] hover:opacity-90"
+                                              title="Abrir carpeta"
+                                            >
+                                              Abrir
+                                            </button>
+                                            <button
+                                              onClick={() => handleAssignLocalFolderAndPull(sync, false)}
+                                              disabled={Boolean(busyAction)}
+                                              className="px-2 py-1 rounded-lg liquid-glass liquid-text-secondary text-[11px] hover:opacity-90"
+                                            >
+                                              Ruta
+                                            </button>
+                                            <button
+                                              onClick={() => handleUnlinkLocal(sync)}
+                                              disabled={Boolean(busyAction)}
+                                              className="p-1 rounded-lg liquid-glass text-rose-400 hover:opacity-90"
+                                              title="Desvincular de esta PC"
+                                            >
+                                              <Link2Off className="w-3 h-3" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : autoMatch ? (
+                                      <div className="liquid-glass-sub rounded-2xl p-3 space-y-2 border border-emerald-400/35">
+                                        <div className="flex items-center justify-between gap-1.5">
+                                          <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                                            <Sparkles className="w-3 h-3" />
+                                            Ruta detectada en esta PC:
+                                          </span>
+                                          {autoMatch.emulatorName && (
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                                              {autoMatch.emulatorName}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <code
+                                          className="block text-[10px] liquid-text-secondary font-mono truncate bg-black/25 px-2 py-1 rounded-lg"
+                                          title={autoMatch.localPath}
+                                        >
+                                          {autoMatch.localPath}
+                                        </code>
+                                        <div className="flex items-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAutoPullWithDetectedPath(sync, autoMatch)}
+                                            disabled={Boolean(busyAction)}
+                                            className="flex-1 py-1.5 px-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1 transition shadow"
+                                          >
+                                            {busyAction === `assign-${sync.id}` ? (
+                                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ) : (
+                                              <ArrowDownToLine className="w-3.5 h-3.5" />
+                                            )}
+                                            Sincronizar automático
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAssignLocalFolderAndPull(sync, true)}
+                                            disabled={Boolean(busyAction)}
+                                            title="Elegir ruta manualmente"
+                                            className="px-2 py-1.5 rounded-xl liquid-glass hover:bg-white/10 liquid-text-secondary text-[11px] font-semibold flex items-center gap-1 transition"
+                                          >
+                                            <FolderOpen className="w-3 h-3" />
+                                            Manual
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="liquid-glass-sub rounded-2xl p-3 space-y-2 border-amber-400/30">
+                                        <p className="text-[11px] liquid-text-secondary flex items-center gap-1.5">
+                                          {scanningAutoPaths && isGame ? (
+                                            <>
+                                              <Loader2 className="w-3 h-3 animate-spin text-sky-400" />
+                                              <span>Buscando ruta en esta PC...</span>
+                                            </>
+                                          ) : (
+                                            <span>Ingresa o selecciona la ruta en esta PC:</span>
+                                          )}
+                                        </p>
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="text"
+                                            value={manualPathInputs[sync.id] || ''}
+                                            onChange={(e) =>
+                                              setManualPathInputs((prev) => ({
+                                                ...prev,
+                                                [sync.id]: e.target.value,
+                                              }))
+                                            }
+                                            placeholder="C:\ruta\del\save..."
+                                            className="flex-1 min-w-0 liquid-glass rounded-lg px-2 py-1 text-[11px] font-mono liquid-text-primary focus:outline-none"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => handleBrowseManualPath(sync)}
+                                            disabled={Boolean(busyAction)}
+                                            title="Seleccionar carpeta desde tu computadora"
+                                            className="p-1.5 rounded-lg liquid-glass hover:bg-white/10 text-sky-400 transition"
+                                          >
+                                            <FolderOpen className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleLinkManualPathAndPull(sync, true)}
+                                            disabled={Boolean(busyAction)}
+                                            className="flex-1 py-1.5 px-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1 transition"
+                                          >
+                                            <ArrowDownToLine className="w-3.5 h-3.5" />
+                                            Vincular y Pull
+                                          </button>
+                                          {!isGame && (
+                                            <button
+                                              onClick={() => setEditingIgnoreSync(sync)}
+                                              disabled={Boolean(busyAction)}
+                                              className="p-1.5 rounded-xl liquid-glass text-amber-400"
+                                              title="Ignorar archivos"
+                                            >
+                                              <EyeOff className="w-4 h-4" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Card Footer Controls */}
+                                <div className="px-4 pb-4 pt-1 flex items-center gap-2">
+                                  {isLinked && (
+                                    <>
+                                      <button
+                                        onClick={() => handlePullOne(sync)}
+                                        disabled={Boolean(busyAction)}
+                                        className="flex-1 py-2.5 rounded-2xl bg-sky-500/20 hover:bg-sky-500 border border-sky-400/40 text-sky-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                                      >
+                                        {busyAction === `pull-${sync.id}` ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                          <ArrowDownToLine className="w-4 h-4" />
+                                        )}
+                                        Pull
+                                      </button>
+
+                                      <button
+                                        onClick={() => handlePushOne(sync)}
+                                        disabled={Boolean(busyAction)}
+                                        className="flex-1 py-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500 border border-emerald-400/40 text-emerald-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                                      >
+                                        {busyAction === `push-${sync.id}` ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                          <ArrowUpFromLine className="w-4 h-4" />
+                                        )}
+                                        Push
+                                      </button>
+                                    </>
+                                  )}
+
+                                  <button
+                                    onClick={() => handleDeleteSyncMetadata(sync)}
+                                    disabled={Boolean(busyAction) || isThisBusy}
+                                    className="p-2.5 rounded-2xl liquid-glass-sub hover:bg-rose-500/20 liquid-text-muted hover:text-rose-400 transition ml-auto"
+                                    title="Eliminar metadata de sincronización"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
-                            </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        /* VISTA EN FILA / LISTA (ROW VIEW) */
+                        <div className="grid grid-cols-1 gap-4">
+                          {serviceMetas.map((sync) => {
+                            const localMapping = config?.localMappings[sync.id]
+                            const isLinked = Boolean(localMapping?.localPath)
+                            const isGame = Boolean(sync.isGameSave) || activeSection === 'games'
+                            const isPendingPull = isSyncPendingPull(sync)
+                            const autoMatch = !isLinked ? autoSaveMatches[sync.id] : undefined
+                            const effectiveIgnored = Array.from(
+                              new Set([
+                                ...(sync.ignoredPaths || []),
+                                ...(localMapping?.ignoredPaths || []),
+                              ])
+                            )
+                            const isThisBusy =
+                              busyAction === `push-${sync.id}` ||
+                              busyAction === `pull-${sync.id}` ||
+                              busyAction === `assign-${sync.id}` ||
+                              busyAction === `delete-${sync.id}` ||
+                              busyAction === `ignore-${sync.id}` ||
+                              busyAction === `cover-${sync.id}`
 
-                            {/* Card Footer Controls */}
-                            <div className="px-4 pb-4 pt-1 flex items-center gap-2">
-                              {isLinked && (
-                                <>
-                                  <button
-                                    onClick={() => handlePullOne(sync)}
-                                    disabled={Boolean(busyAction)}
-                                    className="flex-1 py-2.5 rounded-2xl bg-sky-500/20 hover:bg-sky-500 border border-sky-400/40 text-sky-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center justify-center gap-1.5 transition"
-                                  >
-                                    {busyAction === `pull-${sync.id}` ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <ArrowDownToLine className="w-4 h-4" />
-                                    )}
-                                    Pull
-                                  </button>
-
-                                  <button
-                                    onClick={() => handlePushOne(sync)}
-                                    disabled={Boolean(busyAction)}
-                                    className="flex-1 py-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500 border border-emerald-400/40 text-emerald-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center justify-center gap-1.5 transition"
-                                  >
-                                    {busyAction === `push-${sync.id}` ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <ArrowUpFromLine className="w-4 h-4" />
-                                    )}
-                                    Push
-                                  </button>
-                                </>
-                              )}
-
-                              <button
-                                onClick={() => handleDeleteSyncMetadata(sync)}
-                                disabled={Boolean(busyAction) || isThisBusy}
-                                className="p-2.5 rounded-2xl liquid-glass-sub hover:bg-rose-500/20 liquid-text-muted hover:text-rose-400 transition ml-auto"
-                                title="Eliminar metadata de sincronización"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    /* VISTA EN FILA / LISTA (ROW VIEW) */
-                    <div className="grid grid-cols-1 gap-4">
-                      {serviceMetas.map((sync) => {
-                        const localMapping = config?.localMappings[sync.id]
-                        const isLinked = Boolean(localMapping?.localPath)
-                        const effectiveIgnored = Array.from(
-                          new Set([
-                            ...(sync.ignoredPaths || []),
-                            ...(localMapping?.ignoredPaths || []),
-                          ])
-                        )
-                        const isThisBusy =
-                          busyAction === `push-${sync.id}` ||
-                          busyAction === `pull-${sync.id}` ||
-                          busyAction === `assign-${sync.id}` ||
-                          busyAction === `delete-${sync.id}` ||
-                          busyAction === `ignore-${sync.id}` ||
-                          busyAction === `cover-${sync.id}`
-
-                        return (
-                          <div key={sync.id} className="liquid-glass-card rounded-3xl p-5">
-                            <div className="flex flex-wrap items-start justify-between gap-4">
-                              {/* Cover Thumbnail on the left of the row */}
+                            return (
                               <div
-                                onClick={() => !busyAction && handleChangeCoverForSync(sync)}
-                                className="relative w-28 h-28 rounded-2xl overflow-hidden liquid-glass-sub flex-shrink-0 cursor-pointer group border border-white/15"
-                                title="Haz clic para agregar o cambiar la carátula"
+                                key={sync.id}
+                                className={`liquid-glass-card rounded-3xl p-5 ${
+                                  isPendingPull
+                                    ? theme === 'flat-red'
+                                      ? 'ring-2 ring-red-500/80'
+                                      : 'ring-2 ring-sky-400/70 shadow-lg shadow-sky-500/15'
+                                    : ''
+                                }`}
                               >
-                                {sync.coverImage ? (
-                                  <img
-                                    src={sync.coverImage}
-                                    alt={sync.name}
-                                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex flex-col items-center justify-center text-sky-400/75 gap-1">
-                                    <ImagePlus className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium liquid-text-muted">
-                                      Carátula
-                                    </span>
-                                  </div>
-                                )}
-                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                                  <span className="text-[10px] font-bold text-white px-2 py-1 rounded-lg bg-black/60">
-                                    Cambiar
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="space-y-2 flex-1 min-w-[260px]">
-                                <div className="flex items-center gap-2.5 flex-wrap">
-                                  <h3 className="text-base font-extrabold liquid-text-primary">
-                                    {sync.name}
-                                  </h3>
-                                  {isLinked ? (
-                                    <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-400/30 flex items-center gap-1">
-                                      <Link2 className="w-3 h-3" />
-                                      Vinculada en este dispositivo
-                                    </span>
-                                  ) : (
-                                    <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-400/30">
-                                      Disponible en {pInfo.label} &bull; Sin ruta local asignada
-                                    </span>
-                                  )}
-                                  {effectiveIgnored.length > 0 && (
-                                    <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-400/30 flex items-center gap-1">
-                                      <EyeOff className="w-3 h-3" />
-                                      {effectiveIgnored.length} ignorado(s)
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Metadata info badges */}
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
-                                  <div className="liquid-glass-sub rounded-2xl p-2.5">
-                                    <span className="liquid-text-muted block text-[11px]">
-                                      Carpeta en {pInfo.label}
-                                    </span>
-                                    <span
-                                      className="text-sky-400 font-semibold font-mono flex items-center gap-1.5 mt-0.5 truncate"
-                                      title={`/${sync.driveFolderPath}`}
-                                    >
-                                      <Cloud className="w-3.5 h-3.5 flex-shrink-0" />/
-                                      {sync.driveFolderPath}
-                                    </span>
-                                  </div>
-
-                                  <div className="liquid-glass-sub rounded-2xl p-2.5">
-                                    <span className="liquid-text-muted block text-[11px]">
-                                      Último dispositivo que subió (Push)
-                                    </span>
-                                    <span className="text-emerald-400 font-bold flex items-center gap-1.5 mt-0.5 truncate">
-                                      <Laptop className="w-3.5 h-3.5 flex-shrink-0" />
-                                      {sync.lastPushedByDevice || sync.createdByDevice || 'N/A'}
-                                    </span>
-                                  </div>
-
-                                  <div className="liquid-glass-sub rounded-2xl p-2.5">
-                                    <span className="liquid-text-muted block text-[11px]">
-                                      Última subida / Archivos
-                                    </span>
-                                    <span className="liquid-text-primary font-semibold block mt-0.5 truncate">
-                                      {formatDate(sync.lastPushedAt)} ({sync.lastPushedFileCount}{' '}
-                                      arch.)
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Local folder section */}
-                                {isLinked ? (
-                                  <div className="mt-3 p-3 rounded-2xl liquid-glass-sub flex flex-wrap items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2 text-xs min-w-0 flex-1">
-                                      <HardDrive className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                                      <span className="liquid-text-muted flex-shrink-0">
-                                        Ruta en esta PC:
+                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                  {/* Cover Thumbnail on the left of the row */}
+                                  <div
+                                    onClick={() => !busyAction && handleChangeCoverForSync(sync)}
+                                    className="relative w-28 h-28 rounded-2xl overflow-hidden liquid-glass-sub flex-shrink-0 cursor-pointer group border border-white/15"
+                                    title="Haz clic para agregar o cambiar la carátula"
+                                  >
+                                    {sync.coverImage ? (
+                                      <img
+                                        src={sync.coverImage}
+                                        alt={sync.name}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex flex-col items-center justify-center text-sky-400/75 gap-1">
+                                        {isGame ? (
+                                          <Gamepad2 className="w-6 h-6" />
+                                        ) : (
+                                          <ImagePlus className="w-6 h-6" />
+                                        )}
+                                        <span className="text-[10px] font-medium liquid-text-muted">
+                                          Carátula
+                                        </span>
+                                      </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                                      <span className="text-[10px] font-bold text-white px-2 py-1 rounded-lg bg-black/60">
+                                        Cambiar
                                       </span>
-                                      <code className="liquid-text-primary truncate font-mono">
-                                        {localMapping?.localPath}
-                                      </code>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <button
-                                        onClick={() => setEditingIgnoreSync(sync)}
-                                        disabled={Boolean(busyAction)}
-                                        className="px-2.5 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/30 text-amber-400 text-xs font-semibold flex items-center gap-1 transition"
-                                      >
-                                        <EyeOff className="w-3.5 h-3.5" />
-                                        Ignorar archivos ({effectiveIgnored.length})
-                                      </button>
-                                      <button
-                                        onClick={() =>
-                                          window.syncApi.openLocalPath(localMapping!.localPath)
-                                        }
-                                        className="px-2.5 py-1 rounded-xl liquid-glass liquid-text-secondary text-xs flex items-center gap-1 transition hover:opacity-90"
-                                      >
-                                        <FolderOpen className="w-3.5 h-3.5" />
-                                        Abrir
-                                      </button>
-                                      <button
-                                        onClick={() => handleAssignLocalFolderAndPull(sync, false)}
-                                        disabled={Boolean(busyAction)}
-                                        className="px-2.5 py-1 rounded-xl liquid-glass liquid-text-secondary text-xs transition hover:opacity-90"
-                                      >
-                                        Cambiar ruta
-                                      </button>
-                                      <button
-                                        onClick={() => handleUnlinkLocal(sync)}
-                                        disabled={Boolean(busyAction)}
-                                        className="p-1 rounded-xl liquid-glass text-rose-400 transition hover:opacity-90"
-                                        title="Desvincular carpeta en este dispositivo"
-                                      >
-                                        <Link2Off className="w-3.5 h-3.5" />
-                                      </button>
                                     </div>
                                   </div>
-                                ) : (
-                                  <div className="mt-3 p-3 rounded-2xl liquid-glass-sub border-amber-400/30 flex flex-wrap items-center justify-between gap-3">
-                                    <p className="text-xs liquid-text-secondary">
-                                      Sincronización detectada en {pInfo.label}. Asígnale un
-                                      directorio en esta computadora para descargar los archivos.
-                                    </p>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <button
-                                        onClick={() => setEditingIgnoreSync(sync)}
-                                        disabled={Boolean(busyAction)}
-                                        className="px-3 py-2 rounded-xl liquid-glass text-amber-400 text-xs font-semibold flex items-center gap-1.5 transition"
-                                      >
-                                        <EyeOff className="w-3.5 h-3.5" />
-                                        Ignorar ({effectiveIgnored.length})
-                                      </button>
-                                      <button
-                                        onClick={() => handleAssignLocalFolderAndPull(sync, true)}
-                                        disabled={Boolean(busyAction)}
-                                        className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shadow-md"
-                                      >
-                                        <ArrowDownToLine className="w-4 h-4" />
-                                        Asignar Directorio y Hacer Pull
-                                      </button>
-                                      <button
-                                        onClick={() => handleAssignLocalFolderAndPull(sync, false)}
-                                        disabled={Boolean(busyAction)}
-                                        className="px-3 py-2 rounded-xl liquid-glass liquid-text-primary text-xs font-semibold transition"
-                                      >
-                                        Solo asignar ruta
-                                      </button>
+
+                                  <div className="space-y-2 flex-1 min-w-[260px]">
+                                    <div className="flex items-center gap-2.5 flex-wrap">
+                                      <h3 className="text-base font-extrabold liquid-text-primary">
+                                        {sync.name}
+                                      </h3>
+                                      {isPendingPull && (
+                                        <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/50 flex items-center gap-1">
+                                          <ArrowDownToLine className="w-3 h-3" />
+                                          Pendiente de Pull
+                                        </span>
+                                      )}
+                                      {isLinked ? (
+                                        <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-400/30 flex items-center gap-1">
+                                          <Link2 className="w-3 h-3" />
+                                          Vinculada en este dispositivo
+                                        </span>
+                                      ) : (
+                                        <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-400/30">
+                                          Disponible en {pInfo.label} &bull; Sin ruta local asignada
+                                        </span>
+                                      )}
+                                      {!isGame && effectiveIgnored.length > 0 && (
+                                        <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-400/30 flex items-center gap-1">
+                                          <EyeOff className="w-3 h-3" />
+                                          {effectiveIgnored.length} ignorado(s)
+                                        </span>
+                                      )}
                                     </div>
+
+                                    {/* Metadata info badges */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                                      <div className="liquid-glass-sub rounded-2xl p-2.5">
+                                        <span className="liquid-text-muted block text-[11px]">
+                                          Carpeta en {pInfo.label}
+                                        </span>
+                                        <span
+                                          className="text-sky-400 font-semibold font-mono flex items-center gap-1.5 mt-0.5 truncate"
+                                          title={`/${sync.driveFolderPath}`}
+                                        >
+                                          <Cloud className="w-3.5 h-3.5 flex-shrink-0" />/
+                                          {sync.driveFolderPath}
+                                        </span>
+                                      </div>
+
+                                      <div className="liquid-glass-sub rounded-2xl p-2.5">
+                                        <span className="liquid-text-muted block text-[11px]">
+                                          Último dispositivo que subió (Push)
+                                        </span>
+                                        <span className="text-emerald-400 font-bold flex items-center gap-1.5 mt-0.5 truncate">
+                                          <Laptop className="w-3.5 h-3.5 flex-shrink-0" />
+                                          {sync.lastPushedByDevice || sync.createdByDevice || 'N/A'}
+                                        </span>
+                                      </div>
+
+                                      <div className="liquid-glass-sub rounded-2xl p-2.5">
+                                        <span className="liquid-text-muted block text-[11px]">
+                                          Última subida / Archivos
+                                        </span>
+                                        <span className="liquid-text-primary font-semibold block mt-0.5 truncate">
+                                          {formatDate(sync.lastPushedAt)} ({sync.lastPushedFileCount}{' '}
+                                          arch.)
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Local folder section */}
+                                    {isLinked ? (
+                                      <div className="mt-3 p-3 rounded-2xl liquid-glass-sub flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-xs min-w-0 flex-1">
+                                          <HardDrive className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                                          <span className="liquid-text-muted flex-shrink-0">
+                                            Ruta en esta PC:
+                                          </span>
+                                          <code className="liquid-text-primary truncate font-mono">
+                                            {localMapping?.localPath}
+                                          </code>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          {!isGame && (
+                                            <button
+                                              onClick={() => setEditingIgnoreSync(sync)}
+                                              disabled={Boolean(busyAction)}
+                                              className="px-2.5 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/30 text-amber-400 text-xs font-semibold flex items-center gap-1 transition"
+                                            >
+                                              <EyeOff className="w-3.5 h-3.5" />
+                                              Ignorar archivos ({effectiveIgnored.length})
+                                            </button>
+                                          )}
+                                          <button
+                                            onClick={() =>
+                                              window.syncApi.openLocalPath(localMapping!.localPath)
+                                            }
+                                            className="px-2.5 py-1 rounded-xl liquid-glass liquid-text-secondary text-xs flex items-center gap-1 transition hover:opacity-90"
+                                          >
+                                            <FolderOpen className="w-3.5 h-3.5" />
+                                            Abrir
+                                          </button>
+                                          <button
+                                            onClick={() => handleAssignLocalFolderAndPull(sync, false)}
+                                            disabled={Boolean(busyAction)}
+                                            className="px-2.5 py-1 rounded-xl liquid-glass liquid-text-secondary text-xs transition hover:opacity-90"
+                                          >
+                                            Cambiar ruta
+                                          </button>
+                                          <button
+                                            onClick={() => handleUnlinkLocal(sync)}
+                                            disabled={Boolean(busyAction)}
+                                            className="p-1 rounded-xl liquid-glass text-rose-400 transition hover:opacity-90"
+                                            title="Desvincular carpeta en este dispositivo"
+                                          >
+                                            <Link2Off className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : autoMatch ? (
+                                      <div className="mt-3 p-3.5 rounded-2xl liquid-glass-sub border border-emerald-400/35 flex flex-wrap items-center justify-between gap-3">
+                                        <div className="space-y-1 min-w-[220px] flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                                              <Sparkles className="w-3.5 h-3.5" />
+                                              Ruta detectada automáticamente en esta PC:
+                                            </span>
+                                            {autoMatch.emulatorName && (
+                                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
+                                                {autoMatch.emulatorName}
+                                                {autoMatch.systemName ? ` • ${autoMatch.systemName}` : ''}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <code className="block text-xs liquid-text-primary font-mono truncate">
+                                            {autoMatch.localPath}
+                                          </code>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAutoPullWithDetectedPath(sync, autoMatch)}
+                                            disabled={Boolean(busyAction)}
+                                            className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 transition shadow-md"
+                                          >
+                                            {busyAction === `assign-${sync.id}` ? (
+                                              <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                              <ArrowDownToLine className="w-4 h-4" />
+                                            )}
+                                            Sincronizar automático (Pull)
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAssignLocalFolderAndPull(sync, true)}
+                                            disabled={Boolean(busyAction)}
+                                            title="Elegir ruta manualmente"
+                                            className="px-2.5 py-2 rounded-xl liquid-glass hover:bg-white/10 liquid-text-secondary text-[11px] font-semibold flex items-center gap-1 transition"
+                                          >
+                                            <FolderOpen className="w-3.5 h-3.5" />
+                                            Manual
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="mt-3 p-3 rounded-2xl liquid-glass-sub border-amber-400/30 space-y-2.5">
+                                        <p className="text-xs liquid-text-secondary flex items-center gap-2">
+                                          {scanningAutoPaths && isGame ? (
+                                            <>
+                                              <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                                              <span>Buscando ruta de guardado automáticamente en esta computadora...</span>
+                                            </>
+                                          ) : (
+                                            <span>
+                                              No se encontró la ruta automáticamente. Ingrésala o selecciónala desde tu computadora para descargar los archivos:
+                                            </span>
+                                          )}
+                                        </p>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <div className="flex items-center gap-1.5 flex-1 min-w-[220px]">
+                                            <input
+                                              type="text"
+                                              value={manualPathInputs[sync.id] || ''}
+                                              onChange={(e) =>
+                                                setManualPathInputs((prev) => ({
+                                                  ...prev,
+                                                  [sync.id]: e.target.value,
+                                                }))
+                                              }
+                                              placeholder="Ingresa o selecciona la ruta en esta computadora..."
+                                              className="flex-1 min-w-0 liquid-glass rounded-xl px-3 py-2 text-xs font-mono liquid-text-primary focus:outline-none"
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => handleBrowseManualPath(sync)}
+                                              disabled={Boolean(busyAction)}
+                                              className="px-3 py-2 rounded-xl liquid-glass hover:bg-white/10 text-sky-400 text-xs font-semibold flex items-center gap-1.5 transition"
+                                              title="Seleccionar carpeta desde tu computadora"
+                                            >
+                                              <FolderOpen className="w-3.5 h-3.5" />
+                                              Examinar
+                                            </button>
+                                          </div>
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            {!isGame && (
+                                              <button
+                                                onClick={() => setEditingIgnoreSync(sync)}
+                                                disabled={Boolean(busyAction)}
+                                                className="px-3 py-2 rounded-xl liquid-glass text-amber-400 text-xs font-semibold flex items-center gap-1.5 transition"
+                                              >
+                                                <EyeOff className="w-3.5 h-3.5" />
+                                                Ignorar ({effectiveIgnored.length})
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              onClick={() => handleLinkManualPathAndPull(sync, true)}
+                                              disabled={Boolean(busyAction)}
+                                              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shadow-md"
+                                            >
+                                              <ArrowDownToLine className="w-4 h-4" />
+                                              Vincular y Hacer Pull
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleLinkManualPathAndPull(sync, false)}
+                                              disabled={Boolean(busyAction)}
+                                              className="px-3 py-2 rounded-xl liquid-glass liquid-text-primary text-xs font-semibold transition"
+                                            >
+                                              Solo asignar ruta
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
 
-                              {/* Individual Pull / Push & Delete Controls */}
-                              <div className="flex items-center gap-2 self-center">
-                                {isLinked && (
-                                  <>
+                                  {/* Individual Pull / Push & Delete Controls */}
+                                  <div className="flex items-center gap-2 self-center">
+                                    {isLinked && (
+                                      <>
+                                        <button
+                                          onClick={() => handlePullOne(sync)}
+                                          disabled={Boolean(busyAction)}
+                                          className="px-4 py-2.5 rounded-2xl bg-sky-500/20 hover:bg-sky-500 border border-sky-400/40 text-sky-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 shadow-md transition"
+                                        >
+                                          {busyAction === `pull-${sync.id}` ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <ArrowDownToLine className="w-4 h-4" />
+                                          )}
+                                          Pull
+                                        </button>
+
+                                        <button
+                                          onClick={() => handlePushOne(sync)}
+                                          disabled={Boolean(busyAction)}
+                                          className="px-4 py-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500 border border-emerald-400/40 text-emerald-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 shadow-md transition"
+                                        >
+                                          {busyAction === `push-${sync.id}` ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                          ) : (
+                                            <ArrowUpFromLine className="w-4 h-4" />
+                                          )}
+                                          Push
+                                        </button>
+                                      </>
+                                    )}
+
                                     <button
-                                      onClick={() => handlePullOne(sync)}
-                                      disabled={Boolean(busyAction)}
-                                      className="px-4 py-2.5 rounded-2xl bg-sky-500/20 hover:bg-sky-500 border border-sky-400/40 text-sky-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 shadow-md transition"
+                                      onClick={() => handleDeleteSyncMetadata(sync)}
+                                      disabled={Boolean(busyAction) || isThisBusy}
+                                      className="p-2.5 rounded-2xl liquid-glass-sub hover:bg-rose-500/20 liquid-text-muted hover:text-rose-400 transition"
+                                      title="Eliminar metadata de sincronización"
                                     >
-                                      {busyAction === `pull-${sync.id}` ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                      ) : (
-                                        <ArrowDownToLine className="w-4 h-4" />
-                                      )}
-                                      Pull
+                                      <Trash2 className="w-4 h-4" />
                                     </button>
-
-                                    <button
-                                      onClick={() => handlePushOne(sync)}
-                                      disabled={Boolean(busyAction)}
-                                      className="px-4 py-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500 border border-emerald-400/40 text-emerald-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 shadow-md transition"
-                                    >
-                                      {busyAction === `push-${sync.id}` ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                      ) : (
-                                        <ArrowUpFromLine className="w-4 h-4" />
-                                      )}
-                                      Push
-                                    </button>
-                                  </>
-                                )}
-
-                                <button
-                                  onClick={() => handleDeleteSyncMetadata(sync)}
-                                  disabled={Boolean(busyAction) || isThisBusy}
-                                  className="p-2.5 rounded-2xl liquid-glass-sub hover:bg-rose-500/20 liquid-text-muted hover:text-rose-400 transition"
-                                  title="Eliminar metadata de sincronización"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </section>
-              )
-            })}
+                            )
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  )
+                })}
+              </>
+            )}
           </div>
         )}
       </main>
@@ -1825,6 +2974,7 @@ export const App: React.FC = () => {
       <CreateSyncModal
         isOpen={isCreateModalOpen}
         initialProvider={createModalProvider}
+        defaultIsGameSave={activeSection === 'games'}
         connectedServices={connectedServices}
         onClose={() => setIsCreateModalOpen(false)}
         progress={progress}

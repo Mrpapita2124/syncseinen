@@ -3,6 +3,9 @@ export type CloudProvider = 'gdrive' | 'dropbox' | 'onedrive'
 export interface SyncMetadata {
   id: string
   provider?: CloudProvider
+  isGameSave?: boolean
+  emulatorName?: string | null
+  systemName?: string | null
   name: string
   driveFolderPath: string
   driveFolderName: string
@@ -13,6 +16,28 @@ export interface SyncMetadata {
   lastPushedFileCount: number
   ignoredPaths?: string[]
   coverImage?: string | null
+}
+
+export interface AutoDetectedSaveMatch {
+  syncId: string
+  localPath: string
+  ignoredPaths?: string[]
+  emulatorName?: string | null
+  systemName?: string | null
+  matchType: 'exact-save' | 'emulator-root' | 'ludusavi-path'
+}
+
+export interface DetectedGameSaveItem {
+  id: string
+  name: string
+  steamId: number | null
+  localPath: string
+  ignoredPaths: string[]
+  coverUrl: string | null
+  thumbUrl: string | null
+  source?: 'ludusavi' | 'emuvault' | 'emuatlas'
+  emulatorName?: string | null
+  systemName?: string | null
 }
 
 export interface LocalSyncMapping {
@@ -116,6 +141,18 @@ export interface SyncApi {
     provider?: CloudProvider
   ) => Promise<DriveFolderItem>
   listSyncMetadatas: () => Promise<SyncMetadata[]>
+  scanGameSaves: () => Promise<DetectedGameSaveItem[]>
+  findAutoSavePaths: (syncs: SyncMetadata[]) => Promise<Record<string, AutoDetectedSaveMatch>>
+  createGameSaveSync: (params: {
+    provider: CloudProvider
+    name: string
+    localPath: string
+    ignoredPaths?: string[]
+    coverUrl?: string | null
+    thumbUrl?: string | null
+    emulatorName?: string | null
+    systemName?: string | null
+  }) => Promise<{ meta: SyncMetadata; config: AppConfig }>
   createSync: (params: {
     provider: CloudProvider
     name: string
@@ -124,6 +161,7 @@ export interface SyncApi {
     localPath: string
     ignoredPaths?: string[]
     coverImage?: string | null
+    isGameSave?: boolean
   }) => Promise<{ meta: SyncMetadata; config: AppConfig }>
   listLocalFolderContents: (rootPath: string, relSubPath?: string) => Promise<FolderEntryItem[]>
   listRemoteSyncFolderContents: (

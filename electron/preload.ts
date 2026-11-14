@@ -30,6 +30,18 @@ contextBridge.exposeInMainWorld('syncApi', {
   createDriveFolder: (name: string, parentPath?: string, provider?: string) =>
     ipcRenderer.invoke('drive:createFolder', name, parentPath, provider),
   listSyncMetadatas: () => ipcRenderer.invoke('sync:listMetadatas'),
+  scanGameSaves: () => ipcRenderer.invoke('games:scanSaves'),
+  findAutoSavePaths: (syncs: unknown[]) => ipcRenderer.invoke('games:findAutoSavePaths', syncs),
+  createGameSaveSync: (params: {
+    provider: string
+    name: string
+    localPath: string
+    ignoredPaths?: string[]
+    coverUrl?: string | null
+    thumbUrl?: string | null
+    emulatorName?: string | null
+    systemName?: string | null
+  }) => ipcRenderer.invoke('games:createSaveSync', params),
   createSync: (params: {
     provider: string
     name: string
@@ -38,6 +50,7 @@ contextBridge.exposeInMainWorld('syncApi', {
     localPath: string
     ignoredPaths?: string[]
     coverImage?: string | null
+    isGameSave?: boolean
   }) => ipcRenderer.invoke('sync:create', params),
   listLocalFolderContents: (rootPath: string, relSubPath?: string) =>
     ipcRenderer.invoke('local:listFolderContents', rootPath, relSubPath),

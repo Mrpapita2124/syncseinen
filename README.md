@@ -1,10 +1,29 @@
 # 🔄 SyncSeinen
 
-**SyncSeinen** es una aplicación de escritorio diseñada para sincronizar carpetas de forma sencilla, rápida y controlada entre múltiples dispositivos utilizando **Google Drive**, **Dropbox** y **OneDrive** mediante el motor **rclone** integrado.
+**SyncSeinen** es una aplicación de escritorio diseñada para sincronizar carpetas y partidas guardadas de videojuegos (PC y emuladores) de forma sencilla, rápida y controlada entre múltiples dispositivos utilizando **Google Drive**, **Dropbox** y **OneDrive** mediante el motor **rclone** integrado.
+
+---
+
+## 📸 Capturas de Pantalla
+
+### Panel Principal (Archivos Normales por Servicio)
+![Panel Principal de SyncSeinen](docs/screenshots/dashboard.png)
+
+### Apartado de Saves de Videojuegos y Emuladores
+![Saves de Videojuegos y Emuladores](docs/screenshots/game-saves-dashboard.png)
+
+### Menú Sobrepuesto de Configuración y Servicios en la Nube
+![Menú de Configuración](docs/screenshots/settings-menu.png)
 
 ---
 
 ## ✨ Características Principales
+
+- 🎮 **Sincronización Dedicada de Saves de Videojuegos y Emuladores (`SyncSeinen_games_saves`):**
+  - **División en 2 apartados:** Alterna fácilmente entre **Archivos Normales** y **Saves de Juegos** desde el botón dedicado junto a **+ Nueva Sincronización** (ambos con vista de **Cartas** o **Filas** y agrupados por servicio).
+  - **Escáner Automático con Ludusavi Manifest, EmuAtlas y EmuVault:** Detecta partidas guardadas de videojuegos de PC y emuladores (**Eden**, **Yuzu**, **Ryujinx**, **Cemu**, **Azahar/Citra**, **Dolphin**, **RetroArch**, **PCSX2**, **DuckStation**, **PPSSPP**, **RPCS3**, **mGBA**, **melonDS**, **Snes9x**), ignorando silenciosamente archivos de otros juegos que compartan la misma carpeta.
+  - **Carátulas Automáticas con SteamGridDB:** Asigna portadas oficiales automáticamente a cada juego o emulador detectado.
+  - **Detección Automática en Otros Dispositivos y Prioridad de Pull:** Al iniciar sesión en otra PC, **SyncSeinen** busca automáticamente las rutas locales compatibles para tus saves sin vincular (mostrando un botón de **Sincronizar automático** y una opción **Manual** al lado, o pidiendo ingresar/examinar la ruta si no existe) y coloca primero las sincronizaciones **Pendientes de Pull** cuyo último `Push` provenga de otro dispositivo.
 
 - ☁️ **Soporte Multi-Nube (**`Google Drive`**, **`Dropbox`** y **`OneDrive`**):**
   - Vincula una, dos o las tres nubes al mismo tiempo desde la pantalla inicial o desde el menú de configuración.
@@ -38,23 +57,31 @@
 
 ---
 
-## 🆕 Novedades de la Versión 1.3.0
+## 🆕 Novedades de la Versión 1.4.0
 
-- **Compatibilidad con Dropbox y Microsoft OneDrive (además de Google Drive):**
-  - Soporte completo para crear, vincular, listar carpetas, ignorar rutas y sincronizar (`Push` / `Pull`) en **Google Drive**, **Dropbox** y **OneDrive**.
-  - Resolución automática de unidades en **OneDrive Personal** (descartando unidades fantasma `b!...` de la *Bóveda Personal / Personal Vault* que provocaban el error `ObjectHandle is Invalid` y excluyendo automáticamente las carpetas protegidas del Almacén personal).
-  - Flujo de autenticación OAuth no interactivo con **rclone** que abre una única pestaña en el navegador y limpia cualquier configuración parcial si el usuario cancela el inicio de sesión.
-- **Pantalla Inicial Multi-Servicio:**
-  - Permite iniciar sesión en uno o varios servicios sin cambiar forzosamente de vista tras el primer inicio de sesión, marcando cada servicio conectado y habilitando el botón **Ir a las sincronizaciones** en cuanto al menos un servicio está vinculado.
-- **Menú de Configuración Sobrepuesto (Tipo Pausa de Videojuego):**
-  - Sustituye el antiguo menú desplegable por un panel modal sobrepuesto desde donde se pueden gestionar las sesiones de todos los servicios en una **vista de filas**.
-  - Nuevo **selector de temas por botones con muestra visual de color** (degradado azul/morado para **Cristal Líquido** y cuadrado partido en dos triángulos rectángulos negro y rojo para **Negro y Rojo**).
-- **Cabeceras de Servicio Limpias en la Vista de Sincronizaciones:**
-  - Cada servicio activo agrupa sus carpetas bajo una barra en línea minimalista con su icono, nombre del servicio, línea divisoria y botones rápidos de **Pull** y **Push** para toda esa sección.
+- **Apartado Dedicado de Saves de Videojuegos y Emuladores:**
+  - Botón para cambiar entre **Archivos Normales** y **Saves de Juegos** junto a **+ Nueva Sincronización**, conservando la división por servicio y los modos de vista (**Cartas** y **Filas**).
+  - Nueva casilla **Es una sincronización de save de videojuego** en el modal de **+ Nueva Sincronización** para juegos no detectados automáticamente.
+- **Escáner Estilo Pausa con Ludusavi Manifest + SteamGridDB:**
+  - Al entrar al apartado de **Saves de Juegos** vacío (o desde su barra superior), se abre el menú sobrepuesto de escaneo con buscador de texto, filtros por origen (**Todos**, **PC • Ludusavi**, **Emuladores • EmuAtlas & EmuVault**) y selección múltiple.
+  - En el **Paso 2**, elige el servicio en la nube por juego y pulsa **Finalizar y sincronizar** para subir todos los seleccionados en lote dentro de `/SyncSeinen_games_saves/<Juego>`, ignorando silenciosamente archivos ajenos en carpetas compartidas.
+- **Compatibilidad con Emuladores mediante EmuAtlas y EmuVault:**
+  - Detección automática de raíces de emulación y saves de **Eden / Yuzu / Suyu / Sudachi / Citron**, **Ryujinx**, **Cemu** (leyendo `meta.xml`), **Azahar / Citra / Lime3DS** (cabeceras NCSD), **Dolphin**, **RetroArch**, **PCSX2**, **DuckStation**, **PPSSPP**, **RPCS3** (`PARAM.SFO`), **mGBA**, **melonDS** y **Snes9x**.
+- **Auto-detección de Rutas en Otro Dispositivo y Prioridad de Pull Pendiente:**
+  - Al iniciar sesión en otra computadora, **SyncSeinen** escanea automáticamente dónde guardar cada save de juego o emulador pendiente: si encuentra la ruta, muestra **Sincronizar automático (Pull)** + botón **Manual**; si no la encuentra, permite ingresarla o seleccionarla desde la PC.
+  - Las sincronizaciones cuyo último `Push` fue realizado desde otro dispositivo se marcan como **Pendiente de Pull** y aparecen automáticamente al inicio (en cuadrícula) o hasta arriba (en filas).
 
 ---
 
 ## 🕓 Historial de Versiones Recientes
+
+### Versión 1.3.0
+- **Compatibilidad con Dropbox y Microsoft OneDrive (además de Google Drive):**
+  - Soporte completo para crear, vincular, listar carpetas, ignorar rutas y sincronizar (`Push` / `Pull`) en **Google Drive**, **Dropbox** y **OneDrive**.
+  - Resolución automática de unidades en **OneDrive Personal** (descartando unidades fantasma `b!...` de la *Bóveda Personal / Personal Vault* y excluyendo automáticamente carpetas protegidas).
+  - Flujo de autenticación OAuth no interactivo con **rclone** que abre una única pestaña en el navegador y limpia configuraciones parciales si se cancela.
+- **Pantalla Inicial Multi-Servicio y Menú Sobrepuesto (Tipo Pausa)** con selector visual de temas y vista de filas de servicios.
+- **Cabeceras de Servicio Limpias** (`(icono) Servicio -------- Pull · Push`).
 
 ### Versión 1.2.0
 - **Mini Buscador de Carátulas Online (DuckDuckGo Images)** y subida local.

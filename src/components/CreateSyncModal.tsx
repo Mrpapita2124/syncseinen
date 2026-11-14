@@ -5,6 +5,7 @@ import {
   EyeOff,
   FolderOpen,
   FolderPlus,
+  Gamepad2,
   HardDrive,
   ImagePlus,
   Loader2,
@@ -26,6 +27,7 @@ const PROVIDER_LABELS: Record<CloudProvider, string> = {
 interface CreateSyncModalProps {
   isOpen: boolean
   initialProvider?: CloudProvider
+  defaultIsGameSave?: boolean
   connectedServices?: Record<CloudProvider, boolean>
   onClose: () => void
   progress: SyncProgressEvent | null
@@ -38,12 +40,14 @@ interface CreateSyncModalProps {
     localPath: string
     ignoredPaths?: string[]
     coverImage?: string | null
+    isGameSave?: boolean
   }) => Promise<void>
 }
 
 export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
   isOpen,
   initialProvider = 'gdrive',
+  defaultIsGameSave = false,
   connectedServices = { gdrive: true, dropbox: false, onedrive: false },
   onClose,
   progress,
@@ -56,6 +60,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
   const [localPath, setLocalPath] = useState('')
   const [ignoredPaths, setIgnoredPaths] = useState<string[]>([])
   const [coverImage, setCoverImage] = useState<string | null>(null)
+  const [isGameSave, setIsGameSave] = useState<boolean>(defaultIsGameSave)
   const [isDrivePickerOpen, setIsDrivePickerOpen] = useState(false)
   const [isIgnoreModalOpen, setIsIgnoreModalOpen] = useState(false)
   const [isCoverPickerOpen, setIsCoverPickerOpen] = useState(false)
@@ -65,8 +70,9 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setProvider(initialProvider)
+      setIsGameSave(defaultIsGameSave)
     }
-  }, [isOpen, initialProvider])
+  }, [isOpen, initialProvider, defaultIsGameSave])
 
   if (!isOpen) return null
 
@@ -144,12 +150,14 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
         localPath,
         ignoredPaths,
         coverImage,
+        isGameSave,
       })
       setName('')
       setDriveFolder(null)
       setLocalPath('')
       setIgnoredPaths([])
       setCoverImage(null)
+      setIsGameSave(defaultIsGameSave)
       onClose()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al crear la sincronización')
@@ -351,7 +359,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                 </button>
               </div>
 
-              {localPath && (
+              {localPath && !isGameSave && (
                 <div className="mt-2.5 flex items-center justify-between liquid-glass-sub rounded-xl px-3.5 py-2">
                   <div className="text-xs liquid-text-secondary flex items-center gap-2 truncate">
                     <EyeOff className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
@@ -372,6 +380,32 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Opción para marcar como Sincronización de Videojuego */}
+            <label
+              className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition ${
+                isGameSave
+                  ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-300'
+                  : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:border-white/25'
+              }`}
+            >
+              <input
+                type="checkbox"
+                disabled={isCreating}
+                checked={isGameSave}
+                onChange={(e) => setIsGameSave(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded accent-emerald-500 cursor-pointer flex-shrink-0"
+              />
+              <div className="flex-1 text-left">
+                <div className="flex items-center gap-2 text-xs font-extrabold liquid-text-primary">
+                  <Gamepad2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                  <span>Marcar como Save de Videojuego (enviar al apartado de Videojuegos)</span>
+                </div>
+                <p className="text-[11px] liquid-text-muted mt-0.5 leading-relaxed">
+                  Activa esta casilla si estás sincronizando la partida de un videojuego que no fue detectado automáticamente.
+                </p>
+              </div>
+            </label>
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
