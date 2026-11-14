@@ -1,5 +1,8 @@
+export type CloudProvider = 'gdrive' | 'dropbox' | 'onedrive'
+
 export interface SyncMetadata {
   id: string
+  provider?: CloudProvider
   name: string
   driveFolderPath: string
   driveFolderName: string
@@ -29,6 +32,7 @@ export interface FolderEntryItem {
 export interface AppConfig {
   deviceName: string
   isConnected: boolean
+  connectedServices: Record<CloudProvider, boolean>
   rcloneVersion?: string
   appVersion?: string
   theme?: 'liquid' | 'flat-red'
@@ -94,9 +98,9 @@ export interface SyncApi {
     assetName: string
   }) => Promise<{ ok: boolean }>
   onUpdateProgress: (callback: (event: UpdateProgressEvent) => void) => () => void
-  login: () => Promise<AppConfig>
+  login: (provider: CloudProvider) => Promise<AppConfig>
   cancelLogin: () => Promise<AppConfig>
-  logout: () => Promise<AppConfig>
+  logout: (provider: CloudProvider) => Promise<AppConfig>
   pickLocalFolder: () => Promise<string | null>
   pickCoverImage: () => Promise<string | null>
   searchCoverImagesOnline: (query: string) => Promise<OnlineImageItem[]>
@@ -105,10 +109,15 @@ export interface SyncApi {
     thumbnailUrl?: string
   }) => Promise<string>
   openLocalPath: (folderPath: string) => Promise<void>
-  listDriveFolders: (parentPath?: string) => Promise<DriveFolderItem[]>
-  createDriveFolder: (name: string, parentPath?: string) => Promise<DriveFolderItem>
+  listDriveFolders: (parentPath?: string, provider?: CloudProvider) => Promise<DriveFolderItem[]>
+  createDriveFolder: (
+    name: string,
+    parentPath?: string,
+    provider?: CloudProvider
+  ) => Promise<DriveFolderItem>
   listSyncMetadatas: () => Promise<SyncMetadata[]>
   createSync: (params: {
+    provider: CloudProvider
     name: string
     driveFolderPath: string
     driveFolderName: string
@@ -119,7 +128,8 @@ export interface SyncApi {
   listLocalFolderContents: (rootPath: string, relSubPath?: string) => Promise<FolderEntryItem[]>
   listRemoteSyncFolderContents: (
     driveFolderPath: string,
-    relSubPath?: string
+    relSubPath?: string,
+    provider?: CloudProvider
   ) => Promise<FolderEntryItem[]>
   updateIgnoredPaths: (
     syncId: string,
@@ -134,8 +144,12 @@ export interface SyncApi {
   deleteSyncMetadata: (syncId: string) => Promise<AppConfig>
   pushSync: (syncId: string) => Promise<{ meta: SyncMetadata; config: AppConfig }>
   pullSync: (syncId: string) => Promise<{ meta: SyncMetadata; config: AppConfig }>
-  pushAll: () => Promise<{ metas: SyncMetadata[]; config: AppConfig; processedCount: number }>
-  pullAll: () => Promise<{ metas: SyncMetadata[]; config: AppConfig; processedCount: number }>
+  pushAll: (
+    provider?: CloudProvider
+  ) => Promise<{ metas: SyncMetadata[]; config: AppConfig; processedCount: number }>
+  pullAll: (
+    provider?: CloudProvider
+  ) => Promise<{ metas: SyncMetadata[]; config: AppConfig; processedCount: number }>
   onProgress: (callback: (event: SyncProgressEvent) => void) => () => void
   onTrayAction: (callback: (action: 'pushAll' | 'pullAll') => void) => () => void
 }

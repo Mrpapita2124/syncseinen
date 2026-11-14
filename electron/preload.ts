@@ -16,20 +16,22 @@ contextBridge.exposeInMainWorld('syncApi', {
     ipcRenderer.on('update:progress', listener)
     return () => ipcRenderer.removeListener('update:progress', listener)
   },
-  login: () => ipcRenderer.invoke('auth:login'),
+  login: (provider: string) => ipcRenderer.invoke('auth:login', provider),
   cancelLogin: () => ipcRenderer.invoke('auth:cancelLogin'),
-  logout: () => ipcRenderer.invoke('auth:logout'),
+  logout: (provider: string) => ipcRenderer.invoke('auth:logout', provider),
   pickLocalFolder: () => ipcRenderer.invoke('dialog:pickLocalFolder'),
   pickCoverImage: () => ipcRenderer.invoke('dialog:pickCoverImage'),
   searchCoverImagesOnline: (query: string) => ipcRenderer.invoke('cover:searchOnline', query),
   downloadCoverImageOnline: (params: { imageUrl: string; thumbnailUrl?: string }) =>
     ipcRenderer.invoke('cover:downloadOnline', params),
   openLocalPath: (folderPath: string) => ipcRenderer.invoke('shell:openLocalPath', folderPath),
-  listDriveFolders: (parentPath?: string) => ipcRenderer.invoke('drive:listFolders', parentPath),
-  createDriveFolder: (name: string, parentPath?: string) =>
-    ipcRenderer.invoke('drive:createFolder', name, parentPath),
+  listDriveFolders: (parentPath?: string, provider?: string) =>
+    ipcRenderer.invoke('drive:listFolders', parentPath, provider),
+  createDriveFolder: (name: string, parentPath?: string, provider?: string) =>
+    ipcRenderer.invoke('drive:createFolder', name, parentPath, provider),
   listSyncMetadatas: () => ipcRenderer.invoke('sync:listMetadatas'),
   createSync: (params: {
+    provider: string
     name: string
     driveFolderPath: string
     driveFolderName: string
@@ -39,8 +41,8 @@ contextBridge.exposeInMainWorld('syncApi', {
   }) => ipcRenderer.invoke('sync:create', params),
   listLocalFolderContents: (rootPath: string, relSubPath?: string) =>
     ipcRenderer.invoke('local:listFolderContents', rootPath, relSubPath),
-  listRemoteSyncFolderContents: (driveFolderPath: string, relSubPath?: string) =>
-    ipcRenderer.invoke('drive:listSyncFolderContents', driveFolderPath, relSubPath),
+  listRemoteSyncFolderContents: (driveFolderPath: string, relSubPath?: string, provider?: string) =>
+    ipcRenderer.invoke('drive:listSyncFolderContents', driveFolderPath, relSubPath, provider),
   updateIgnoredPaths: (syncId: string, ignoredPaths: string[]) =>
     ipcRenderer.invoke('sync:updateIgnoredPaths', syncId, ignoredPaths),
   updateCoverImage: (syncId: string, coverImage: string | null) =>
@@ -51,8 +53,8 @@ contextBridge.exposeInMainWorld('syncApi', {
   deleteSyncMetadata: (syncId: string) => ipcRenderer.invoke('sync:deleteMetadata', syncId),
   pushSync: (syncId: string) => ipcRenderer.invoke('sync:push', syncId),
   pullSync: (syncId: string) => ipcRenderer.invoke('sync:pull', syncId),
-  pushAll: () => ipcRenderer.invoke('sync:pushAll'),
-  pullAll: () => ipcRenderer.invoke('sync:pullAll'),
+  pushAll: (provider?: string) => ipcRenderer.invoke('sync:pushAll', provider),
+  pullAll: (provider?: string) => ipcRenderer.invoke('sync:pullAll', provider),
   onProgress: (callback: (event: unknown) => void) => {
     const listener = (_event: unknown, data: unknown) => callback(data)
     ipcRenderer.on('sync:progress', listener)

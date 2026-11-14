@@ -9,10 +9,17 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
-import { DriveFolderItem } from '../types'
+import { CloudProvider, DriveFolderItem } from '../types'
+
+const PROVIDER_LABELS: Record<CloudProvider, string> = {
+  gdrive: 'Google Drive',
+  dropbox: 'Dropbox',
+  onedrive: 'OneDrive',
+}
 
 interface DriveFolderModalProps {
   isOpen: boolean
+  provider?: CloudProvider
   localFolderName?: string
   onClose: () => void
   onSelect: (folder: { path: string; name: string }) => void
@@ -20,12 +27,14 @@ interface DriveFolderModalProps {
 
 export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
   isOpen,
+  provider = 'gdrive',
   localFolderName,
   onClose,
   onSelect,
 }) => {
+  const providerLabel = PROVIDER_LABELS[provider] || 'Google Drive'
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ path: string; name: string }>>([
-    { path: '', name: 'Mi unidad (Google Drive)' },
+    { path: '', name: `Raíz (${providerLabel})` },
   ])
   const [folders, setFolders] = useState<DriveFolderItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -38,6 +47,10 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
   const cleanLocalName = (localFolderName || '').trim()
 
   useEffect(() => {
+    setBreadcrumbs([{ path: '', name: `Raíz (${providerLabel})` }])
+  }, [provider, providerLabel])
+
+  useEffect(() => {
     if (cleanLocalName) {
       setAutoAppendLocalName(true)
     }
@@ -47,11 +60,13 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
     setLoading(true)
     setError(null)
     try {
-      const list = await window.syncApi.listDriveFolders(parentPath)
+      const list = await window.syncApi.listDriveFolders(parentPath, provider)
       setFolders(list)
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : 'Error al cargar carpetas de Google Drive vía rclone'
+        err instanceof Error
+          ? err.message
+          : `Error al cargar carpetas de ${providerLabel} vía rclone`
       )
     } finally {
       setLoading(false)
@@ -62,7 +77,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
     if (isOpen) {
       fetchFolders(currentFolder.path)
     }
-  }, [isOpen, currentFolder.path])
+  }, [isOpen, currentFolder.path, provider])
 
   if (!isOpen) return null
 
@@ -84,23 +99,26 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
     try {
       const created = await window.syncApi.createDriveFolder(
         newFolderName.trim(),
-        currentFolder.path
+        currentFolder.path,
+        provider
       )
       setNewFolderName('')
       await fetchFolders(currentFolder.path)
       setBreadcrumbs((prev) => [...prev, { path: created.path, name: created.name }])
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear la carpeta en Google Drive')
+      setError(
+        err instanceof Error ? err.message : `No se pudo crear la carpeta en ${providerLabel}`
+      )
     } finally {
       setCreating(false)
     }
   }
 
   /**
-   * Selecciona una carpeta destino en Google Drive.
+   * Selecciona una carpeta destino en la nube.
    * Si la opción automática está activa (o se pide explícitamente forceAutoSubfolder),
    * crea la subcarpeta con el nombre de la carpeta local de la PC dentro de la ruta elegida
-   * y añade esa nueva subcarpeta a la ruta de Google Drive.
+   * y añade esa nueva subcarpeta a la ruta remota.
    */
   const handleSelectWithOptionalSubfolder = async (
     baseFolder: { path: string; name: string },
@@ -125,7 +143,11 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
     setCreating(true)
     setError(null)
     try {
-      const created = await window.syncApi.createDriveFolder(cleanLocalName, baseFolder.path)
+      const created = await window.syncApi.createDriveFolder(
+        cleanLocalName,
+        baseFolder.path,
+        provider
+      )
       onSelect({
         path: created.path,
         name: created.name,
@@ -134,7 +156,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
       setError(
         err instanceof Error
           ? err.message
-          : `No se pudo crear automáticamente la carpeta "${cleanLocalName}" en Google Drive`
+          : `No se pudo crear automáticamente la carpeta "${cleanLocalName}" en ${providerLabel}`
       )
     } finally {
       setCreating(false)
@@ -159,7 +181,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
           <div className="flex items-center gap-2.5">
             <Folder className="w-5 h-5 text-sky-400" />
             <h3 className="text-lg font-bold liquid-text-primary">
-              Seleccionar Carpeta en Google Drive
+              Seleccionar Carpeta en {providerLabel}
             </h3>
           </div>
           <button
@@ -272,7 +294,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 liquid-text-muted gap-2">
               <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
-              <span className="text-sm">Consultando carpetas en Google Drive con rclone...</span>
+              <span className="text-sm">Consultando carpetas en {providerLabel} con rclone...</span>
             </div>
           ) : folders.length === 0 ? (
             <div className="text-center py-12 liquid-text-muted text-sm">

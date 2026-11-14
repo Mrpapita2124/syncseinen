@@ -15,11 +15,18 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { FolderEntryItem } from '../types'
+import { CloudProvider, FolderEntryItem } from '../types'
+
+const PROVIDER_LABELS: Record<CloudProvider, string> = {
+  gdrive: 'Google Drive',
+  dropbox: 'Dropbox',
+  onedrive: 'OneDrive',
+}
 
 interface IgnoreFilesModalProps {
   isOpen: boolean
   title: string
+  provider?: CloudProvider
   localPath?: string
   driveFolderPath?: string
   initialIgnoredPaths: string[]
@@ -30,12 +37,14 @@ interface IgnoreFilesModalProps {
 export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
   isOpen,
   title,
+  provider = 'gdrive',
   localPath,
   driveFolderPath,
   initialIgnoredPaths,
   onClose,
   onSave,
 }) => {
+  const providerLabel = PROVIDER_LABELS[provider] || 'Google Drive'
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ relPath: string; name: string }>>([
     { relPath: '', name: 'Raíz de la sincronización' },
   ])
@@ -72,7 +81,8 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
         } else if (driveFolderPath !== undefined) {
           const items = await window.syncApi.listRemoteSyncFolderContents(
             driveFolderPath,
-            currentCrumb.relPath
+            currentCrumb.relPath,
+            provider
           )
           setEntries(items)
         } else {
@@ -237,7 +247,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
                 }`}
               >
                 <Cloud className="w-3.5 h-3.5" />
-                Google Drive
+                {providerLabel}
               </button>
             </div>
           )}

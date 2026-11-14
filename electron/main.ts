@@ -10,8 +10,11 @@ import extract from 'extract-zip'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+export type CloudProvider = 'gdrive' | 'dropbox' | 'onedrive'
+
 export interface SyncMetadata {
   id: string
+  provider?: CloudProvider
   name: string
   driveFolderPath: string
   driveFolderName: string
@@ -41,6 +44,7 @@ export interface FolderEntryItem {
 export interface AppConfig {
   deviceName: string
   isConnected: boolean
+  connectedServices: Record<CloudProvider, boolean>
   rcloneVersion?: string
   appVersion?: string
   theme?: 'liquid' | 'flat-red'
@@ -87,6 +91,29 @@ const RCLONE_CONF_FILENAME = 'rclone.conf'
 const REMOTE_NAME = 'syncseinen'
 const METADATA_FOLDER_NAME = '_SyncSeinen_Metadata'
 const GITHUB_REPO = 'Mrpapita2124/syncseinen'
+
+const ALL_PROVIDERS: CloudProvider[] = ['gdrive', 'dropbox', 'onedrive']
+
+const PROVIDER_CONFIG: Record<
+  CloudProvider,
+  { remoteName: string; rcloneType: string; label: string }
+> = {
+  gdrive: {
+    remoteName: 'syncseinen',
+    rcloneType: 'drive',
+    label: 'Google Drive',
+  },
+  dropbox: {
+    remoteName: 'syncseinen_dropbox',
+    rcloneType: 'dropbox',
+    label: 'Dropbox',
+  },
+  onedrive: {
+    remoteName: 'syncseinen_onedrive',
+    rcloneType: 'onedrive',
+    label: 'OneDrive',
+  },
+}
 
 function isNewerSemver(latest: string, current: string): boolean {
   const cleanLatest = latest.replace(/^v/i, '').trim().split('-')[0]
@@ -381,23 +408,88 @@ function getRcloneConfigPath(): string {
   return path.join(app.getPath('userData'), RCLONE_CONF_FILENAME)
 }
 
-function hasRcloneRemoteConfigured(): boolean {
+function removeRemoteSectionFromConf(remoteName: string): void {
+  const confPath = getRcloneConfigPath()
+  if (!fs.existsSync(confPath)) return
+  try {
+    const content = fs.readFileSync(confPath, 'utf-8')
+    const lines = content.split(/\r?\n/)
+    const kept: string[] = []
+    let skipping = false
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        const secName = trimmed.slice(1, -1).trim()
+        skipping = secName === remoteName
+      }
+      if (!skipping) {
+        kept.push(line)
+      }
+    }
+    const nextContent = kept.join('\n').trim()
+    fs.writeFileSync(confPath, nextContent ? `${nextContent}\n` : '', 'utf-8')
+  } catch {
+    // ignore
+  }
+}
+
+function isProviderConfigured(provider: CloudProvider): boolean {
   const confPath = getRcloneConfigPath()
   if (!fs.existsSync(confPath)) return false
   try {
     const content = fs.readFileSync(confPath, 'utf-8')
-    return content.includes(`[${REMOTE_NAME}]`) && content.includes('token')
+    const remoteName = PROVIDER_CONFIG[provider]?.remoteName
+    if (!remoteName) return false
+
+    const lines = content.split(/\r?\n/)
+    let inSection = false
+    let hasToken = false
+    let hasDriveId = false
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        const secName = trimmed.slice(1, -1).trim()
+        inSection = secName === remoteName
+      } else if (inSection) {
+        if (/^token\s*=\s*\S+/.test(trimmed)) {
+          hasToken = true
+        }
+        if (/^drive_id\s*=\s*\S+/.test(trimmed)) {
+          hasDriveId = true
+        }
+      }
+    }
+    if (provider === 'onedrive') {
+      return hasToken && hasDriveId
+    }
+    return hasToken
   } catch {
     return false
   }
 }
 
+function getConnectedServices(): Record<CloudProvider, boolean> {
+  return {
+    gdrive: isProviderConfigured('gdrive'),
+    dropbox: isProviderConfigured('dropbox'),
+    onedrive: isProviderConfigured('onedrive'),
+  }
+}
+
+function hasRcloneRemoteConfigured(): boolean {
+  const services = getConnectedServices()
+  return Object.values(services).some(Boolean)
+}
+
 function loadConfig(): AppConfig {
   const configPath = getConfigPath()
+  const connectedServices = getConnectedServices()
+  const isConnected = Object.values(connectedServices).some(Boolean)
   const defaultConfig: AppConfig = {
     deviceName:
       os.hostname() || (process.platform === 'linux' ? 'Dispositivo-Linux' : 'Dispositivo-Windows'),
-    isConnected: hasRcloneRemoteConfigured(),
+    isConnected,
+    connectedServices,
     localMappings: {},
   }
   try {
@@ -407,7 +499,8 @@ function loadConfig(): AppConfig {
       return {
         ...defaultConfig,
         ...parsed,
-        isConnected: hasRcloneRemoteConfigured(),
+        isConnected,
+        connectedServices,
         localMappings: parsed.localMappings || {},
       }
     }
@@ -461,7 +554,9 @@ function downloadFileWithRedirects(url: string, destPath: string): Promise<void>
 class RcloneSyncService {
   private rcloneBinPath: string | null = null
   private activeAuthProcess: ChildProcess | null = null
-  private metadataFolderEnsured = false
+  private activeAuthProvider: CloudProvider | null = null
+  private loginCanceled = false
+  private metadataFolderEnsured: Set<CloudProvider> = new Set()
   private metadatasCache: Map<string, SyncMetadata> = new Map()
   private onProgressCallback?: (event: SyncProgressEvent) => void
 
@@ -469,28 +564,58 @@ class RcloneSyncService {
     this.onProgressCallback = onProgress
   }
 
+  private getRemoteName(provider: CloudProvider = 'gdrive'): string {
+    return PROVIDER_CONFIG[provider]?.remoteName || REMOTE_NAME
+  }
+
+  private getProviderLabel(provider: CloudProvider = 'gdrive'): string {
+    return PROVIDER_CONFIG[provider]?.label || 'Google Drive'
+  }
+
   /**
-   * Flags de aceleración para que rclone opere a máxima velocidad con Google Drive:
-   * - Mayor paralelismo en transferencias y verificadores
-   * - Bloques de subida de 64MB (en vez de 8MB por defecto)
-   * - Pacer optimizado para ráfagas rápidas de archivos pequeños
+   * Flags de aceleración para que rclone opere a máxima velocidad según el proveedor
    */
-  private getSpeedFlags(): string[] {
-    return [
+  private getSpeedFlags(provider: CloudProvider = 'gdrive'): string[] {
+    if (provider === 'onedrive') {
+      return [
+        '--transfers',
+        '8',
+        '--checkers',
+        '16',
+        '--buffer-size',
+        '32M',
+        '--exclude',
+        '/Personal Vault/**',
+        '--exclude',
+        '/Almacén personal/**',
+        '--exclude',
+        '/Bóveda personal/**',
+      ]
+    }
+    const baseFlags = [
       '--fast-list',
       '--transfers',
       '16',
       '--checkers',
       '32',
-      '--drive-chunk-size',
-      '64M',
-      '--drive-pacer-min-sleep',
-      '10ms',
-      '--drive-pacer-burst',
-      '200',
       '--buffer-size',
       '32M',
     ]
+    if (provider === 'gdrive') {
+      return [
+        ...baseFlags,
+        '--drive-chunk-size',
+        '64M',
+        '--drive-pacer-min-sleep',
+        '10ms',
+        '--drive-pacer-burst',
+        '200',
+      ]
+    }
+    if (provider === 'dropbox') {
+      return [...baseFlags, '--dropbox-chunk-size', '64M']
+    }
+    return baseFlags
   }
 
   private emitProgress(event: SyncProgressEvent) {
@@ -637,11 +762,164 @@ class RcloneSyncService {
     }
   }
 
+  private fetchGraphJson(url: string, accessToken: string): Promise<any | null> {
+    return new Promise((resolve) => {
+      try {
+        const req = https.get(
+          url,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: 'application/json',
+            },
+            timeout: 6000,
+          },
+          (res) => {
+            let body = ''
+            res.on('data', (chunk) => {
+              body += chunk.toString()
+            })
+            res.on('end', () => {
+              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                try {
+                  resolve(JSON.parse(body))
+                  return
+                } catch {
+                  resolve(null)
+                  return
+                }
+              }
+              resolve(null)
+            })
+          }
+        )
+        req.on('error', () => resolve(null))
+        req.on('timeout', () => {
+          req.destroy()
+          resolve(null)
+        })
+      } catch {
+        resolve(null)
+      }
+    })
+  }
+
+  private readAccessTokenFromConf(remoteName: string): string | null {
+    const confPath = getRcloneConfigPath()
+    if (!fs.existsSync(confPath)) return null
+    try {
+      const content = fs.readFileSync(confPath, 'utf-8')
+      const lines = content.split(/\r?\n/)
+      let inSection = false
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+          inSection = trimmed.slice(1, -1).trim() === remoteName
+        } else if (inSection && /^token\s*=/.test(trimmed)) {
+          const jsonStr = trimmed.replace(/^token\s*=\s*/, '').trim()
+          const parsed = JSON.parse(jsonStr)
+          if (parsed && typeof parsed.access_token === 'string' && parsed.access_token) {
+            return parsed.access_token
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null
+  }
+
   /**
-   * Inicia sesión con Google Drive mediante rclone sin necesidad de Google Cloud Console ni API Keys propias.
-   * rclone abre el navegador automáticamente con su cliente OAuth integrado.
+   * Obtiene y prioriza los candidatos de drive_id para OneDrive.
+   * En cuentas personales de Microsoft con Personal Vault (Almacén personal),
+   * /me/drives suele devolver primero un drive fantasma "b!..." que falla con
+   * HTTP 400 "ObjectHandle is Invalid", mientras que el segundo drive (hexadecimal sin "b!")
+   * o el devuelto por /me/drive/root es el OneDrive real del usuario.
    */
-  public async loginWithRclone(): Promise<AppConfig> {
+  private async resolveOneDriveCandidateDrives(
+    remoteName: string,
+    examples: Array<{ Value?: string; Help?: string }>
+  ): Promise<string[]> {
+    const highPriority: string[] = []
+    const lowPriority: string[] = []
+
+    const addCandidate = (id: unknown, preferHigh: boolean) => {
+      if (typeof id !== 'string') return
+      const clean = id.trim()
+      if (!clean) return
+      const isBHandle = clean.startsWith('b!')
+      if (preferHigh && !isBHandle) {
+        if (!highPriority.includes(clean)) highPriority.push(clean)
+      } else if (!isBHandle) {
+        if (!highPriority.includes(clean)) highPriority.push(clean)
+      } else {
+        if (!lowPriority.includes(clean)) lowPriority.push(clean)
+      }
+    }
+
+    // 1. Clasificar los ejemplos devueltos por rclone (priorizando los que NO empiezan con "b!")
+    for (const ex of examples) {
+      if (ex?.Value) {
+        addCandidate(ex.Value, !ex.Value.startsWith('b!'))
+      }
+    }
+
+    // 2. Consultar directamente Microsoft Graph con el token recién obtenido por rclone
+    const accessToken = this.readAccessTokenFromConf(remoteName)
+    if (accessToken) {
+      const [meDriveRoot, meDrive, meDrives] = await Promise.all([
+        this.fetchGraphJson('https://graph.microsoft.com/v1.0/me/drive/root', accessToken),
+        this.fetchGraphJson('https://graph.microsoft.com/v1.0/me/drive', accessToken),
+        this.fetchGraphJson('https://graph.microsoft.com/v1.0/me/drives', accessToken),
+      ])
+
+      if (meDriveRoot?.parentReference?.driveId) {
+        const rootDriveId = String(meDriveRoot.parentReference.driveId).trim()
+        if (rootDriveId && !highPriority.includes(rootDriveId)) {
+          highPriority.unshift(rootDriveId)
+        }
+      }
+
+      if (meDrive?.id) {
+        addCandidate(meDrive.id, true)
+      }
+      if (typeof meDrive?.webUrl === 'string') {
+        const match = meDrive.webUrl.match(/\/personal\/([a-fA-F0-9]{12,32})(?:\/|$)/)
+        if (match?.[1]) {
+          addCandidate(match[1], true)
+        }
+      }
+
+      if (Array.isArray(meDrives?.value)) {
+        for (const d of meDrives.value) {
+          if (d?.id) {
+            addCandidate(d.id, !String(d.id).startsWith('b!'))
+          }
+          if (typeof d?.webUrl === 'string') {
+            const match = d.webUrl.match(/\/personal\/([a-fA-F0-9]{12,32})(?:\/|$)/)
+            if (match?.[1]) {
+              addCandidate(match[1], true)
+            }
+          }
+        }
+      }
+    }
+
+    const combined: string[] = []
+    for (const id of [...highPriority, ...lowPriority]) {
+      if (id && !combined.includes(id)) {
+        combined.push(id)
+      }
+    }
+    return combined
+  }
+
+  /**
+   * Inicia sesión con el proveedor elegido (Google Drive, Dropbox o OneDrive) mediante rclone
+   * usando la máquina de estados --non-interactive para completar automáticamente preguntas post-OAuth
+   * (como drive_id y drive_type en OneDrive) y sin abrir pestañas duplicadas en el navegador.
+   */
+  public async loginWithRclone(provider: CloudProvider = 'gdrive'): Promise<AppConfig> {
     const bin = await this.ensureRcloneBinary()
     const confPath = getRcloneConfigPath()
     fs.mkdirSync(path.dirname(confPath), { recursive: true })
@@ -655,70 +933,229 @@ class RcloneSyncService {
       this.activeAuthProcess = null
     }
 
-    // Eliminar configuración previa si estaba incompleta
-    try {
-      await this.runRclone(['config', 'delete', REMOTE_NAME])
-    } catch {
-      // ignorar
+    const remoteName = this.getRemoteName(provider)
+    const providerLabel = this.getProviderLabel(provider)
+    this.activeAuthProvider = provider
+    this.loginCanceled = false
+
+    // Eliminar cualquier sección previa incompleta de este proveedor
+    removeRemoteSectionFromConf(remoteName)
+
+    const runStep = (args: string[]): Promise<{
+      State?: string
+      Error?: string
+      Option?: {
+        Name?: string
+        DefaultStr?: string
+        Examples?: Array<{ Value?: string; Help?: string }>
+      }
+    }> => {
+      return new Promise((resolve, reject) => {
+        if (this.loginCanceled) {
+          reject(new Error(`Inicio de sesión en ${providerLabel} cancelado.`))
+          return
+        }
+
+        const child = spawn(bin, args, { windowsHide: true })
+        this.activeAuthProcess = child
+
+        let stdoutOutput = ''
+        let stderrOutput = ''
+
+        child.stdout.on('data', (chunk: Buffer) => {
+          stdoutOutput += chunk.toString()
+        })
+
+        child.stderr.on('data', (chunk: Buffer) => {
+          stderrOutput += chunk.toString()
+        })
+
+        child.on('error', (err) => {
+          this.activeAuthProcess = null
+          reject(err)
+        })
+
+        child.on('close', (code) => {
+          this.activeAuthProcess = null
+          if (this.loginCanceled) {
+            reject(new Error(`Inicio de sesión en ${providerLabel} cancelado.`))
+            return
+          }
+          if (code !== 0) {
+            reject(
+              new Error(
+                stderrOutput.trim() ||
+                  `Se canceló o no se completó el inicio de sesión con ${providerLabel}.`
+              )
+            )
+            return
+          }
+          const trimmedOut = stdoutOutput.trim()
+          if (!trimmedOut) {
+            resolve({ State: '' })
+            return
+          }
+          try {
+            const parsed = JSON.parse(trimmedOut)
+            resolve(parsed)
+          } catch {
+            resolve({ State: '' })
+          }
+        })
+      })
     }
 
-    await new Promise<void>((resolve, reject) => {
-      const args = [
-        'config',
-        'create',
-        REMOTE_NAME,
-        'drive',
-        'scope',
-        'drive',
-        'config_is_local',
-        'true',
-        '--config',
-        confPath,
-      ]
+    try {
+      let createArgs: string[]
+      if (provider === 'gdrive') {
+        createArgs = [
+          'config',
+          'create',
+          remoteName,
+          'drive',
+          'scope',
+          'drive',
+          '--non-interactive',
+          '--config',
+          confPath,
+        ]
+      } else if (provider === 'dropbox') {
+        createArgs = [
+          'config',
+          'create',
+          remoteName,
+          'dropbox',
+          '--non-interactive',
+          '--config',
+          confPath,
+        ]
+      } else {
+        createArgs = [
+          'config',
+          'create',
+          remoteName,
+          'onedrive',
+          '--non-interactive',
+          '--config',
+          confPath,
+        ]
+      }
 
-      const child = spawn(bin, args, { windowsHide: true })
-      this.activeAuthProcess = child
+      let step = await runStep(createArgs)
 
-      let stderrOutput = ''
-
-      child.stderr.on('data', (chunk: Buffer) => {
-        const text = chunk.toString()
-        stderrOutput += text
-        // Si rclone imprime un enlace http://127.0.0.1:53682/auth y no pudo abrir el navegador en algún entorno Linux, lo abrimos
-        const match = text.match(/http:\/\/127\.0\.0\.1:\d+\/auth\S*/)
-        if (match && match[0]) {
-          shell.openExternal(match[0]).catch(() => {})
+      let guard = 0
+      while (step && step.State && guard < 15) {
+        guard++
+        if (step.Error) {
+          throw new Error(step.Error)
         }
-      })
 
-      child.on('error', (err) => {
-        this.activeAuthProcess = null
-        reject(err)
-      })
+        const optName = step.Option?.Name || ''
 
-      child.on('close', (code) => {
-        this.activeAuthProcess = null
-        if (code === 0 && hasRcloneRemoteConfigured()) {
-          resolve()
-        } else {
-          reject(
-            new Error(
-              stderrOutput.trim() ||
-                'Se canceló o no se completó el inicio de sesión con Google Drive en el navegador.'
-            )
+        if (optName === 'config_driveid' && provider === 'onedrive') {
+          const driveIdState = step.State
+          const candidates = await this.resolveOneDriveCandidateDrives(
+            remoteName,
+            step.Option?.Examples || []
           )
+
+          let resolvedStep: typeof step | null = null
+          let lastErr = ''
+
+          for (const candidateId of candidates) {
+            const tryStep = await runStep([
+              'config',
+              'update',
+              remoteName,
+              '--continue',
+              '--state',
+              driveIdState,
+              '--result',
+              candidateId,
+              '--non-interactive',
+              '--config',
+              confPath,
+            ])
+            if (!tryStep.Error) {
+              resolvedStep = tryStep
+              break
+            }
+            lastErr = tryStep.Error
+          }
+
+          if (!resolvedStep) {
+            throw new Error(
+              lastErr || 'No se pudo obtener una unidad válida de OneDrive para esta cuenta.'
+            )
+          }
+
+          step = resolvedStep
+          continue
         }
-      })
-    })
+
+        let answer = ''
+
+        if (optName === 'config_shared_client_id') {
+          answer = 'true'
+        } else if (optName === 'config_is_local') {
+          answer = 'true'
+        } else if (optName === 'config_type') {
+          answer = 'onedrive'
+        } else if (optName === 'config_drive_ok') {
+          answer = 'true'
+        } else if (optName === 'config_change_team_drive') {
+          answer = 'false'
+        } else if (step.Option?.DefaultStr !== undefined && step.Option.DefaultStr !== '') {
+          answer = String(step.Option.DefaultStr)
+        } else if (
+          Array.isArray(step.Option?.Examples) &&
+          step.Option.Examples.length > 0 &&
+          step.Option.Examples[0].Value !== undefined
+        ) {
+          answer = String(step.Option.Examples[0].Value)
+        }
+
+        step = await runStep([
+          'config',
+          'update',
+          remoteName,
+          '--continue',
+          '--state',
+          step.State,
+          '--result',
+          answer,
+          '--non-interactive',
+          '--config',
+          confPath,
+        ])
+      }
+
+      if (step?.Error) {
+        throw new Error(step.Error)
+      }
+
+      if (!isProviderConfigured(provider)) {
+        throw new Error(
+          `No se completó la configuración de ${providerLabel}. Intenta iniciar sesión nuevamente.`
+        )
+      }
+    } catch (err) {
+      removeRemoteSectionFromConf(remoteName)
+      throw err
+    } finally {
+      this.activeAuthProvider = null
+      this.activeAuthProcess = null
+    }
 
     const cfg = loadConfig()
-    cfg.isConnected = true
     cfg.rcloneVersion = await this.getVersion()
     saveConfig(cfg)
     return cfg
   }
 
   public cancelLogin(): void {
+    this.loginCanceled = true
+    const providerToClean = this.activeAuthProvider
     if (this.activeAuthProcess) {
       try {
         this.activeAuthProcess.kill()
@@ -727,44 +1164,69 @@ class RcloneSyncService {
       }
       this.activeAuthProcess = null
     }
+    if (providerToClean) {
+      const remoteName = this.getRemoteName(providerToClean)
+      removeRemoteSectionFromConf(remoteName)
+    }
+    this.activeAuthProvider = null
   }
 
-  public async logout(): Promise<AppConfig> {
-    this.cancelLogin()
+  public async logout(provider: CloudProvider = 'gdrive'): Promise<AppConfig> {
+    if (this.activeAuthProvider === provider) {
+      this.cancelLogin()
+    }
+    const remoteName = this.getRemoteName(provider)
+    removeRemoteSectionFromConf(remoteName)
     try {
-      await this.runRclone(['config', 'delete', REMOTE_NAME])
+      await this.runRclone(['config', 'delete', remoteName])
     } catch {
       // ignorar
     }
-    const confPath = getRcloneConfigPath()
-    if (fs.existsSync(confPath)) {
-      try {
-        fs.unlinkSync(confPath)
-      } catch {
-        // ignorar
+
+    this.metadataFolderEnsured.delete(provider)
+    for (const [id, meta] of this.metadatasCache.entries()) {
+      if ((meta.provider || 'gdrive') === provider) {
+        this.metadatasCache.delete(id)
       }
     }
-    this.metadataFolderEnsured = false
-    this.metadatasCache.clear()
+
     const cfg = loadConfig()
-    cfg.isConnected = false
     saveConfig(cfg)
     return cfg
   }
 
   /**
-   * Asegura que exista la carpeta dedicada _SyncSeinen_Metadata en Google Drive.
+   * Asegura que exista la carpeta dedicada _SyncSeinen_Metadata en el proveedor indicado.
    * En esta carpeta NUNCA se guardan los archivos sincronizados del usuario, solo los JSON de metadata.
    */
-  public async ensureMetadataFolder(): Promise<void> {
-    if (this.metadataFolderEnsured) return
-    await this.runRclone(['mkdir', `${REMOTE_NAME}:${METADATA_FOLDER_NAME}`])
-    this.metadataFolderEnsured = true
+  public async ensureMetadataFolder(provider: CloudProvider = 'gdrive'): Promise<void> {
+    if (this.metadataFolderEnsured.has(provider)) return
+    const remoteName = this.getRemoteName(provider)
+    await this.runRclone(['mkdir', `${remoteName}:${METADATA_FOLDER_NAME}`])
+    this.metadataFolderEnsured.add(provider)
   }
 
-  public async listDriveFolders(parentPath = ''): Promise<DriveFolderItem[]> {
+  public async listDriveFolders(
+    parentPath = '',
+    provider: CloudProvider = 'gdrive'
+  ): Promise<DriveFolderItem[]> {
+    const remoteName = this.getRemoteName(provider)
     const cleanParent = parentPath.replace(/^\/+|\/+$/g, '')
-    const remoteTarget = cleanParent ? `${REMOTE_NAME}:${cleanParent}` : `${REMOTE_NAME}:`
+    const remoteTarget = cleanParent ? `${remoteName}:${cleanParent}` : `${remoteName}:`
+
+    const extraFlags =
+      provider === 'gdrive'
+        ? ['--fast-list', '--drive-pacer-min-sleep', '10ms', '--drive-pacer-burst', '200']
+        : provider === 'onedrive'
+          ? [
+              '--exclude',
+              '/Personal Vault/**',
+              '--exclude',
+              '/Almacén personal/**',
+              '--exclude',
+              '/Bóveda personal/**',
+            ]
+          : ['--fast-list']
 
     const { stdout } = await this.runRclone([
       'lsjson',
@@ -772,16 +1234,18 @@ class RcloneSyncService {
       '--dirs-only',
       '--no-modtime',
       '--no-mimetype',
-      '--fast-list',
-      '--drive-pacer-min-sleep',
-      '10ms',
-      '--drive-pacer-burst',
-      '200',
+      ...extraFlags,
     ])
 
+    const vaultNames = new Set(['Personal Vault', 'Almacén personal', 'Bóveda personal'])
     const items: Array<{ Name: string; IsDir: boolean }> = JSON.parse(stdout || '[]')
     return items
-      .filter((item) => item.IsDir && item.Name !== METADATA_FOLDER_NAME)
+      .filter(
+        (item) =>
+          item.IsDir &&
+          item.Name !== METADATA_FOLDER_NAME &&
+          !(provider === 'onedrive' && vaultNames.has(item.Name))
+      )
       .map((item) => ({
         name: item.Name,
         path: cleanParent ? `${cleanParent}/${item.Name}` : item.Name,
@@ -790,12 +1254,17 @@ class RcloneSyncService {
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  public async createDriveFolder(name: string, parentPath = ''): Promise<DriveFolderItem> {
+  public async createDriveFolder(
+    name: string,
+    parentPath = '',
+    provider: CloudProvider = 'gdrive'
+  ): Promise<DriveFolderItem> {
+    const remoteName = this.getRemoteName(provider)
     const cleanName = name.trim().replace(/^\/+|\/+$/g, '')
     const cleanParent = parentPath.replace(/^\/+|\/+$/g, '')
     const fullPath = cleanParent ? `${cleanParent}/${cleanName}` : cleanName
 
-    await this.runRclone(['mkdir', `${REMOTE_NAME}:${fullPath}`])
+    await this.runRclone(['mkdir', `${remoteName}:${fullPath}`])
 
     return {
       name: cleanName,
@@ -805,65 +1274,86 @@ class RcloneSyncService {
   }
 
   /**
-   * Lee todos los archivos JSON de metadata desde la carpeta dedicada _SyncSeinen_Metadata en Google Drive.
+   * Lee todos los archivos JSON de metadata desde la carpeta dedicada _SyncSeinen_Metadata
+   * de todos los servicios conectados (Google Drive, Dropbox, OneDrive).
    */
   public async listSyncMetadatas(): Promise<SyncMetadata[]> {
-    if (!hasRcloneRemoteConfigured()) return []
+    const connected = getConnectedServices()
+    const activeProviders = ALL_PROVIDERS.filter((p) => connected[p])
+    if (activeProviders.length === 0) return []
 
-    const tempMetaDir = path.join(os.tmpdir(), 'syncseinen-metadata-cache')
-    if (fs.existsSync(tempMetaDir)) {
-      fs.rmSync(tempMetaDir, { recursive: true, force: true })
+    const baseTempMetaDir = path.join(os.tmpdir(), 'syncseinen-metadata-cache')
+    if (fs.existsSync(baseTempMetaDir)) {
+      fs.rmSync(baseTempMetaDir, { recursive: true, force: true })
     }
-    fs.mkdirSync(tempMetaDir, { recursive: true })
+    fs.mkdirSync(baseTempMetaDir, { recursive: true })
 
-    try {
-      await this.runRclone([
-        'copy',
-        `${REMOTE_NAME}:${METADATA_FOLDER_NAME}`,
-        tempMetaDir,
-        '--include',
-        'sync-*.json',
-        ...this.getSpeedFlags(),
-      ])
-      this.metadataFolderEnsured = true
-    } catch {
-      // Si la carpeta aún no existe en una cuenta nueva, la creamos
-      await this.ensureMetadataFolder()
-    }
-
-    const files = fs.readdirSync(tempMetaDir).filter((f) => f.startsWith('sync-') && f.endsWith('.json'))
     const metadatas: SyncMetadata[] = []
     this.metadatasCache.clear()
 
-    for (const file of files) {
-      try {
-        const raw = fs.readFileSync(path.join(tempMetaDir, file), 'utf-8')
-        const parsed = JSON.parse(raw)
-        if (parsed && parsed.id) {
-          const driveFolderPath = parsed.driveFolderPath || parsed.driveFolderName || parsed.name
-          const driveFolderName =
-            parsed.driveFolderName || driveFolderPath.split('/').filter(Boolean).pop() || driveFolderPath
+    await Promise.all(
+      activeProviders.map(async (provider) => {
+        const providerDir = path.join(baseTempMetaDir, provider)
+        fs.mkdirSync(providerDir, { recursive: true })
+        const remoteName = this.getRemoteName(provider)
 
-          const metaItem: SyncMetadata = {
-            id: parsed.id,
-            name: parsed.name,
-            driveFolderPath,
-            driveFolderName,
-            createdAt: parsed.createdAt || new Date().toISOString(),
-            createdByDevice: parsed.createdByDevice || 'Dispositivo',
-            lastPushedAt: parsed.lastPushedAt || null,
-            lastPushedByDevice: parsed.lastPushedByDevice || null,
-            lastPushedFileCount: parsed.lastPushedFileCount ?? 0,
-            ignoredPaths: Array.isArray(parsed.ignoredPaths) ? parsed.ignoredPaths : [],
-            coverImage: parsed.coverImage || null,
+        try {
+          await this.runRclone([
+            'copy',
+            `${remoteName}:${METADATA_FOLDER_NAME}`,
+            providerDir,
+            '--include',
+            'sync-*.json',
+            ...this.getSpeedFlags(provider),
+          ])
+          this.metadataFolderEnsured.add(provider)
+        } catch {
+          try {
+            await this.ensureMetadataFolder(provider)
+          } catch {
+            // ignorar
           }
-          metadatas.push(metaItem)
-          this.metadatasCache.set(metaItem.id, metaItem)
         }
-      } catch (err) {
-        console.error(`Error leyendo archivo de metadata ${file}:`, err)
-      }
-    }
+
+        const files = fs
+          .readdirSync(providerDir)
+          .filter((f) => f.startsWith('sync-') && f.endsWith('.json'))
+
+        for (const file of files) {
+          try {
+            const raw = fs.readFileSync(path.join(providerDir, file), 'utf-8')
+            const parsed = JSON.parse(raw)
+            if (parsed && parsed.id) {
+              const driveFolderPath =
+                parsed.driveFolderPath || parsed.driveFolderName || parsed.name
+              const driveFolderName =
+                parsed.driveFolderName ||
+                driveFolderPath.split('/').filter(Boolean).pop() ||
+                driveFolderPath
+
+              const metaItem: SyncMetadata = {
+                id: parsed.id,
+                provider,
+                name: parsed.name,
+                driveFolderPath,
+                driveFolderName,
+                createdAt: parsed.createdAt || new Date().toISOString(),
+                createdByDevice: parsed.createdByDevice || 'Dispositivo',
+                lastPushedAt: parsed.lastPushedAt || null,
+                lastPushedByDevice: parsed.lastPushedByDevice || null,
+                lastPushedFileCount: parsed.lastPushedFileCount ?? 0,
+                ignoredPaths: Array.isArray(parsed.ignoredPaths) ? parsed.ignoredPaths : [],
+                coverImage: parsed.coverImage || null,
+              }
+              metadatas.push(metaItem)
+              this.metadatasCache.set(metaItem.id, metaItem)
+            }
+          } catch (err) {
+            console.error(`Error leyendo archivo de metadata ${file} (${provider}):`, err)
+          }
+        }
+      })
+    )
 
     metadatas.sort((a, b) => {
       const dateA = a.lastPushedAt || a.createdAt
@@ -875,20 +1365,27 @@ class RcloneSyncService {
   }
 
   public async saveSyncMetadataToDrive(meta: SyncMetadata): Promise<SyncMetadata> {
+    const provider: CloudProvider = meta.provider || 'gdrive'
+    const remoteName = this.getRemoteName(provider)
     const fileName = `sync-${meta.id}.json`
     const tempFile = path.join(os.tmpdir(), `${fileName}-${Date.now()}`)
 
-    fs.writeFileSync(tempFile, JSON.stringify(meta, null, 2), 'utf-8')
+    const payload: SyncMetadata = {
+      ...meta,
+      provider,
+    }
+
+    fs.writeFileSync(tempFile, JSON.stringify(payload, null, 2), 'utf-8')
     try {
+      const extraFlags = provider === 'gdrive' ? ['--drive-pacer-min-sleep', '10ms'] : []
       await this.runRclone([
         'copyto',
         tempFile,
-        `${REMOTE_NAME}:${METADATA_FOLDER_NAME}/${fileName}`,
-        '--drive-pacer-min-sleep',
-        '10ms',
+        `${remoteName}:${METADATA_FOLDER_NAME}/${fileName}`,
+        ...extraFlags,
       ])
-      this.metadataFolderEnsured = true
-      this.metadatasCache.set(meta.id, meta)
+      this.metadataFolderEnsured.add(provider)
+      this.metadatasCache.set(payload.id, payload)
     } finally {
       try {
         fs.unlinkSync(tempFile)
@@ -896,15 +1393,22 @@ class RcloneSyncService {
         // ignorar
       }
     }
-    return meta
+    return payload
   }
 
   public async deleteSyncMetadata(syncId: string): Promise<void> {
+    let meta = this.metadatasCache.get(syncId)
+    if (!meta) {
+      const allMetas = await this.listSyncMetadatas()
+      meta = allMetas.find((m) => m.id === syncId)
+    }
+    const provider: CloudProvider = meta?.provider || 'gdrive'
+    const remoteName = this.getRemoteName(provider)
     const fileName = `sync-${syncId}.json`
     try {
-      await this.runRclone(['deletefile', `${REMOTE_NAME}:${METADATA_FOLDER_NAME}/${fileName}`])
+      await this.runRclone(['deletefile', `${remoteName}:${METADATA_FOLDER_NAME}/${fileName}`])
     } catch (err) {
-      console.error('Error borrando metadata en Drive:', err)
+      console.error('Error borrando metadata en la nube:', err)
     }
     this.metadatasCache.delete(syncId)
     const cfg = loadConfig()
@@ -955,22 +1459,28 @@ class RcloneSyncService {
 
   public async listRemoteSyncFolderContents(
     driveFolderPath: string,
-    relSubPath = ''
+    relSubPath = '',
+    provider: CloudProvider = 'gdrive'
   ): Promise<FolderEntryItem[]> {
+    const remoteName = this.getRemoteName(provider)
     const cleanBase = driveFolderPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
     const cleanRel = relSubPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
     const fullRemote = [cleanBase, cleanRel].filter(Boolean).join('/')
-    const remoteTarget = fullRemote ? `${REMOTE_NAME}:${fullRemote}` : `${REMOTE_NAME}:`
+    const remoteTarget = fullRemote ? `${remoteName}:${fullRemote}` : `${remoteName}:`
 
     try {
+      const extraFlags =
+        provider === 'gdrive'
+          ? ['--fast-list', '--drive-pacer-min-sleep', '10ms']
+          : provider === 'onedrive'
+            ? []
+            : ['--fast-list']
       const { stdout } = await this.runRclone([
         'lsjson',
         remoteTarget,
         '--no-modtime',
         '--no-mimetype',
-        '--fast-list',
-        '--drive-pacer-min-sleep',
-        '10ms',
+        ...extraFlags,
       ])
       const parsed: Array<{ Name: string; IsDir: boolean; Size?: number }> = JSON.parse(stdout || '[]')
       const items: FolderEntryItem[] = parsed
@@ -1030,7 +1540,7 @@ class RcloneSyncService {
   /**
    * Construye un archivo temporal de exclusiones para rclone (--exclude-from).
    * Como NO se pasa --delete-excluded a rclone sync:
-   * - En Push: los archivos/carpetas ignorados NO se suben a Google Drive.
+   * - En Push: los archivos/carpetas ignorados NO se suben a la nube.
    * - En Pull: los archivos/carpetas ignorados son completamente ignorados en ambos lados y NO se borran ni sobrescriben localmente.
    */
   private createTempExcludeFile(ignoredPaths: string[]): string | null {
@@ -1064,6 +1574,7 @@ class RcloneSyncService {
   private async runRcloneSyncWithProgress(params: {
     syncId: string
     syncName: string
+    provider: CloudProvider
     operation: 'push' | 'pull'
     source: string
     destination: string
@@ -1072,13 +1583,14 @@ class RcloneSyncService {
     const bin = await this.ensureRcloneBinary()
     const confPath = getRcloneConfigPath()
     const tempExcludeFile = this.createTempExcludeFile(params.ignoredPaths || [])
+    const providerLabel = this.getProviderLabel(params.provider)
 
     const args = [
       'sync',
       params.source,
       params.destination,
       '--create-empty-src-dirs',
-      ...this.getSpeedFlags(),
+      ...this.getSpeedFlags(params.provider),
       ...(tempExcludeFile ? ['--exclude-from', tempExcludeFile] : []),
       '--stats',
       '300ms',
@@ -1108,8 +1620,8 @@ class RcloneSyncService {
               operation: params.operation,
               phase:
                 params.operation === 'push'
-                  ? 'Sincronizando archivos hacia Google Drive con rclone...'
-                  : 'Descargando archivos desde Google Drive con rclone...',
+                  ? `Sincronizando archivos hacia ${providerLabel} con rclone...`
+                  : `Descargando archivos desde ${providerLabel} con rclone...`,
               current: pct !== undefined ? pct : 50,
               total: 100,
               detail: cleanDetail.slice(0, 90),
@@ -1159,7 +1671,7 @@ class RcloneSyncService {
       meta = allMetas.find((m) => m.id === syncId)
     }
     if (!meta) {
-      throw new Error('No se encontró la metadata de esta sincronización en Google Drive.')
+      throw new Error('No se encontró la metadata de esta sincronización en la nube.')
     }
 
     meta.ignoredPaths = cleanPaths
@@ -1181,7 +1693,7 @@ class RcloneSyncService {
       meta = allMetas.find((m) => m.id === syncId)
     }
     if (!meta) {
-      throw new Error('No se encontró la metadata de esta sincronización en Google Drive.')
+      throw new Error('No se encontró la metadata de esta sincronización en la nube.')
     }
 
     meta.coverImage = coverImage
@@ -1190,6 +1702,7 @@ class RcloneSyncService {
   }
 
   public async createSyncAndInitialPush(params: {
+    provider?: CloudProvider
     name: string
     driveFolderPath: string
     driveFolderName: string
@@ -1200,6 +1713,7 @@ class RcloneSyncService {
     const cfg = loadConfig()
     const syncId = crypto.randomUUID()
     const now = new Date().toISOString()
+    const provider: CloudProvider = params.provider || 'gdrive'
     const cleanIgnored = Array.from(
       new Set(
         (params.ignoredPaths || [])
@@ -1210,6 +1724,7 @@ class RcloneSyncService {
 
     const newMeta: SyncMetadata = {
       id: syncId,
+      provider,
       name: params.name.trim(),
       driveFolderPath: params.driveFolderPath,
       driveFolderName: params.driveFolderName,
@@ -1233,7 +1748,7 @@ class RcloneSyncService {
   }
 
   /**
-   * PUSH: Usa rclone sync para subir el contenido de la carpeta local a la carpeta elegida de Google Drive,
+   * PUSH: Usa rclone sync para subir el contenido de la carpeta local a la carpeta elegida del servicio en la nube,
    * ignorando las rutas configuradas en ignoredPaths, y actualiza el JSON de metadata en _SyncSeinen_Metadata.
    */
   public async pushSync(syncId: string): Promise<SyncMetadata> {
@@ -1253,8 +1768,12 @@ class RcloneSyncService {
       meta = allMetas.find((m) => m.id === syncId)
     }
     if (!meta) {
-      throw new Error('No se encontró la metadata de esta sincronización en Google Drive.')
+      throw new Error('No se encontró la metadata de esta sincronización en la nube.')
     }
+
+    const provider: CloudProvider = meta.provider || 'gdrive'
+    const remoteName = this.getRemoteName(provider)
+    const providerLabel = this.getProviderLabel(provider)
 
     const effectiveIgnored = Array.from(
       new Set([...(meta.ignoredPaths || []), ...(mapping.ignoredPaths || [])])
@@ -1263,14 +1782,14 @@ class RcloneSyncService {
 
     const fileCount = this.countLocalFiles(mapping.localPath, mapping.localPath, effectiveIgnored)
     const remoteDest = meta.driveFolderPath
-      ? `${REMOTE_NAME}:${meta.driveFolderPath}`
-      : `${REMOTE_NAME}:`
+      ? `${remoteName}:${meta.driveFolderPath}`
+      : `${remoteName}:`
 
     this.emitProgress({
       syncId,
       syncName: meta.name,
       operation: 'push',
-      phase: 'Iniciando Push acelerado con rclone hacia Google Drive...',
+      phase: `Iniciando Push acelerado con rclone hacia ${providerLabel}...`,
       current: 5,
       total: 100,
     })
@@ -1278,6 +1797,7 @@ class RcloneSyncService {
     await this.runRcloneSyncWithProgress({
       syncId,
       syncName: meta.name,
+      provider,
       operation: 'push',
       source: mapping.localPath,
       destination: remoteDest,
@@ -1293,7 +1813,7 @@ class RcloneSyncService {
       syncId,
       syncName: meta.name,
       operation: 'push',
-      phase: 'Actualizando metadata en _SyncSeinen_Metadata...',
+      phase: `Actualizando metadata en _SyncSeinen_Metadata (${providerLabel})...`,
       current: 95,
       total: 100,
     })
@@ -1311,7 +1831,7 @@ class RcloneSyncService {
   }
 
   /**
-   * PULL: Usa rclone sync para descargar los archivos de la carpeta de Google Drive hacia el directorio local
+   * PULL: Usa rclone sync para descargar los archivos de la carpeta en la nube hacia el directorio local
    * asignado en esta computadora, ignorando las rutas en ignoredPaths para que NO se descarguen ni se borren localmente.
    */
   public async pullSync(syncId: string): Promise<SyncMetadata> {
@@ -1330,22 +1850,26 @@ class RcloneSyncService {
       meta = allMetas.find((m) => m.id === syncId)
     }
     if (!meta) {
-      throw new Error('No se encontró la metadata de la sincronización en Google Drive.')
+      throw new Error('No se encontró la metadata de la sincronización en la nube.')
     }
+
+    const provider: CloudProvider = meta.provider || 'gdrive'
+    const remoteName = this.getRemoteName(provider)
+    const providerLabel = this.getProviderLabel(provider)
 
     const effectiveIgnored = Array.from(
       new Set([...(meta.ignoredPaths || []), ...(mapping.ignoredPaths || [])])
     )
 
     const remoteSource = meta.driveFolderPath
-      ? `${REMOTE_NAME}:${meta.driveFolderPath}`
-      : `${REMOTE_NAME}:`
+      ? `${remoteName}:${meta.driveFolderPath}`
+      : `${remoteName}:`
 
     this.emitProgress({
       syncId,
       syncName: meta.name,
       operation: 'pull',
-      phase: 'Iniciando Pull acelerado con rclone desde Google Drive...',
+      phase: `Iniciando Pull acelerado con rclone desde ${providerLabel}...`,
       current: 5,
       total: 100,
     })
@@ -1353,6 +1877,7 @@ class RcloneSyncService {
     await this.runRcloneSyncWithProgress({
       syncId,
       syncName: meta.name,
+      provider,
       operation: 'pull',
       source: remoteSource,
       destination: mapping.localPath,
@@ -2073,8 +2598,8 @@ app.whenReady().then(() => {
     }
   )
 
-  ipcMain.handle('auth:login', async () => {
-    const cfg = await rcloneService!.loginWithRclone()
+  ipcMain.handle('auth:login', async (_e, provider: CloudProvider = 'gdrive') => {
+    const cfg = await rcloneService!.loginWithRclone(provider)
     return cfg
   })
 
@@ -2083,8 +2608,8 @@ app.whenReady().then(() => {
     return loadConfig()
   })
 
-  ipcMain.handle('auth:logout', async () => {
-    return await rcloneService!.logout()
+  ipcMain.handle('auth:logout', async (_e, provider: CloudProvider = 'gdrive') => {
+    return await rcloneService!.logout(provider)
   })
 
   ipcMain.handle('dialog:pickLocalFolder', async () => {
@@ -2103,13 +2628,19 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('drive:listFolders', async (_e, parentPath = '') => {
-    return await rcloneService!.listDriveFolders(parentPath)
-  })
+  ipcMain.handle(
+    'drive:listFolders',
+    async (_e, parentPath = '', provider: CloudProvider = 'gdrive') => {
+      return await rcloneService!.listDriveFolders(parentPath, provider)
+    }
+  )
 
-  ipcMain.handle('drive:createFolder', async (_e, name: string, parentPath = '') => {
-    return await rcloneService!.createDriveFolder(name, parentPath)
-  })
+  ipcMain.handle(
+    'drive:createFolder',
+    async (_e, name: string, parentPath = '', provider: CloudProvider = 'gdrive') => {
+      return await rcloneService!.createDriveFolder(name, parentPath, provider)
+    }
+  )
 
   ipcMain.handle('sync:listMetadatas', async () => {
     return await rcloneService!.listSyncMetadatas()
@@ -2120,6 +2651,7 @@ app.whenReady().then(() => {
     async (
       _e,
       params: {
+        provider?: CloudProvider
         name: string
         driveFolderPath: string
         driveFolderName: string
@@ -2156,8 +2688,12 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'drive:listSyncFolderContents',
-    async (_e, driveFolderPath: string, relSubPath = '') => {
-      return await rcloneService!.listRemoteSyncFolderContents(driveFolderPath, relSubPath)
+    async (_e, driveFolderPath: string, relSubPath = '', provider: CloudProvider = 'gdrive') => {
+      return await rcloneService!.listRemoteSyncFolderContents(
+        driveFolderPath,
+        relSubPath,
+        provider
+      )
     }
   )
 
@@ -2210,12 +2746,15 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('sync:pushAll', async () => {
+  ipcMain.handle('sync:pushAll', async (_e, provider?: CloudProvider) => {
     const cfg = loadConfig()
     const allMetas = await rcloneService!.listSyncMetadatas()
+    const targetMetas = provider
+      ? allMetas.filter((m) => (m.provider || 'gdrive') === provider)
+      : allMetas
     let processedCount = 0
 
-    for (const meta of allMetas) {
+    for (const meta of targetMetas) {
       const mapping = cfg.localMappings[meta.id]
       if (mapping && mapping.localPath && fs.existsSync(mapping.localPath)) {
         await rcloneService!.pushSync(meta.id)
@@ -2230,12 +2769,15 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('sync:pullAll', async () => {
+  ipcMain.handle('sync:pullAll', async (_e, provider?: CloudProvider) => {
     const cfg = loadConfig()
     const allMetas = await rcloneService!.listSyncMetadatas()
+    const targetMetas = provider
+      ? allMetas.filter((m) => (m.provider || 'gdrive') === provider)
+      : allMetas
     let processedCount = 0
 
-    for (const meta of allMetas) {
+    for (const meta of targetMetas) {
       const mapping = cfg.localMappings[meta.id]
       if (mapping && mapping.localPath) {
         await rcloneService!.pullSync(meta.id)

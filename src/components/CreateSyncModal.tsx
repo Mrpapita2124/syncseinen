@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   CheckCircle2,
   Cloud,
@@ -15,14 +15,23 @@ import {
 import { DriveFolderModal } from './DriveFolderModal'
 import { IgnoreFilesModal } from './IgnoreFilesModal'
 import { CoverPickerModal } from './CoverPickerModal'
-import { SyncProgressEvent } from '../types'
+import { CloudProvider, SyncProgressEvent } from '../types'
+
+const PROVIDER_LABELS: Record<CloudProvider, string> = {
+  gdrive: 'Google Drive',
+  dropbox: 'Dropbox',
+  onedrive: 'OneDrive',
+}
 
 interface CreateSyncModalProps {
   isOpen: boolean
+  initialProvider?: CloudProvider
+  connectedServices?: Record<CloudProvider, boolean>
   onClose: () => void
   progress: SyncProgressEvent | null
   isCreating: boolean
   onCreated: (params: {
+    provider: CloudProvider
     name: string
     driveFolderPath: string
     driveFolderName: string
@@ -34,11 +43,14 @@ interface CreateSyncModalProps {
 
 export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
   isOpen,
+  initialProvider = 'gdrive',
+  connectedServices = { gdrive: true, dropbox: false, onedrive: false },
   onClose,
   progress,
   isCreating,
   onCreated,
 }) => {
+  const [provider, setProvider] = useState<CloudProvider>(initialProvider)
   const [name, setName] = useState('')
   const [driveFolder, setDriveFolder] = useState<{ path: string; name: string } | null>(null)
   const [localPath, setLocalPath] = useState('')
@@ -50,7 +62,18 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
   const [creatingSubfolder, setCreatingSubfolder] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (isOpen) {
+      setProvider(initialProvider)
+    }
+  }, [isOpen, initialProvider])
+
   if (!isOpen) return null
+
+  const providerLabel = PROVIDER_LABELS[provider] || 'Google Drive'
+  const availableProviders = (['gdrive', 'dropbox', 'onedrive'] as CloudProvider[]).filter(
+    (p) => connectedServices[p]
+  )
 
   const localFolderName = localPath
     ? localPath.split(/[/\\]/).filter(Boolean).pop() || ''
@@ -83,7 +106,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
     setError(null)
     try {
       const parentPath = driveFolder ? driveFolder.path : ''
-      const created = await window.syncApi.createDriveFolder(localFolderName, parentPath)
+      const created = await window.syncApi.createDriveFolder(localFolderName, parentPath, provider)
       setDriveFolder({
         path: created.path,
         name: created.name,
@@ -92,7 +115,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
       setError(
         err instanceof Error
           ? err.message
-          : `No se pudo crear la carpeta "${localFolderName}" en Google Drive`
+          : `No se pudo crear la carpeta "${localFolderName}" en ${providerLabel}`
       )
     } finally {
       setCreatingSubfolder(false)
@@ -106,12 +129,15 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !driveFolder || !localPath) {
-      setError('Completa el nombre, la carpeta de tu computadora y la carpeta en Google Drive.')
+      setError(
+        `Completa el nombre, la carpeta de tu computadora y la carpeta en ${providerLabel}.`
+      )
       return
     }
     setError(null)
     try {
       await onCreated({
+        provider,
         name: name.trim(),
         driveFolderPath: driveFolder.path,
         driveFolderName: driveFolder.name,
@@ -137,7 +163,9 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
           <div className="flex items-center justify-between px-6 py-4 border-b border-white/15">
             <div className="flex items-center gap-2.5">
               <PlusCircle className="w-5 h-5 text-sky-400" />
-              <h3 className="text-lg font-bold liquid-text-primary">Crear Nueva Sincronización</h3>
+              <h3 className="text-lg font-bold liquid-text-primary">
+                Crear Nueva Sincronización ({providerLabel})
+              </h3>
             </div>
             <button
               type="button"
@@ -189,6 +217,44 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
           )}
 
           <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+            {/* Selector de Servicio en la Nube */}
+            {availableProviders.length > 1 && (
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
+                  Servicio en la Nube Destino
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['gdrive', 'dropbox', 'onedrive'] as CloudProvider[]).map((p) => {
+                    const isConn = Boolean(connectedServices[p])
+                    const isSelected = provider === p
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        disabled={!isConn || isCreating}
+                        onClick={() => {
+                          if (provider !== p) {
+                            setProvider(p)
+                            setDriveFolder(null)
+                          }
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition ${
+                          isSelected
+                            ? 'bg-sky-500/25 border-sky-400 text-sky-300 shadow'
+                            : isConn
+                              ? 'liquid-glass-sub liquid-text-secondary hover:liquid-text-primary'
+                              : 'opacity-40 cursor-not-allowed liquid-glass-sub liquid-text-muted'
+                        }`}
+                      >
+                        <Cloud className="w-3.5 h-3.5" />
+                        <span>{PROVIDER_LABELS[p]}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Carátula / Cover Image Selector */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-2">
@@ -220,7 +286,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
 
                 <div className="flex-1 space-y-1.5">
                   <p className="text-xs liquid-text-secondary leading-relaxed">
-                    Escoge una imagen representativa (juego, proyecto, carpeta). Se adjunta directamente a la metadata en Google Drive para que se vea en todos tus dispositivos.
+                    Escoge una imagen representativa (juego, proyecto, carpeta). Se adjunta directamente a la metadata en {providerLabel} para que se vea en todos tus dispositivos.
                   </p>
                   <div className="flex items-center gap-2">
                     <button
@@ -309,14 +375,14 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
-                3. Carpeta en Google Drive (Destino donde rclone guardará los archivos)
+                3. Carpeta en {providerLabel} (Destino donde rclone guardará los archivos)
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   readOnly
                   value={driveFolder ? `/${driveFolder.path}` : ''}
-                  placeholder="Selecciona o crea una carpeta en tu Google Drive..."
+                  placeholder={`Selecciona o crea una carpeta en tu ${providerLabel}...`}
                   className="flex-1 liquid-glass-sub rounded-xl px-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 font-mono"
                 />
                 <button
@@ -326,7 +392,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   className="px-4 py-2.5 rounded-xl liquid-glass hover:opacity-90 disabled:opacity-50 liquid-text-primary text-sm font-semibold flex items-center gap-2 transition flex-shrink-0"
                 >
                   <Cloud className="w-4 h-4 text-sky-400" />
-                  Elegir en Drive
+                  Elegir en {providerLabel}
                 </button>
               </div>
 
@@ -337,7 +403,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                     <div className="flex items-center gap-2 text-xs text-emerald-300 font-medium">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                       <span>
-                        Subcarpeta automática lista en Drive:{' '}
+                        Subcarpeta automática lista en {providerLabel}:{' '}
                         <code className="font-mono font-bold text-emerald-300">
                           /{driveFolder?.path}
                         </code>
@@ -348,7 +414,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                       <div className="text-xs liquid-text-secondary flex-1 min-w-[200px]">
                         ¿Guardar dentro de una carpeta llamada{' '}
                         <strong className="text-emerald-300">«{localFolderName}»</strong> en{' '}
-                        {driveFolder ? `/${driveFolder.path}` : 'Mi unidad'}?
+                        {driveFolder ? `/${driveFolder.path}` : `Raíz (${providerLabel})`}?
                       </div>
                       <button
                         type="button"
@@ -411,6 +477,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
 
       <DriveFolderModal
         isOpen={isDrivePickerOpen}
+        provider={provider}
         localFolderName={localFolderName}
         onClose={() => setIsDrivePickerOpen(false)}
         onSelect={(folder) => {
@@ -422,6 +489,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
       <IgnoreFilesModal
         isOpen={isIgnoreModalOpen}
         title={name || 'Nueva Sincronización'}
+        provider={provider}
         localPath={localPath}
         driveFolderPath={driveFolder?.path}
         initialIgnoredPaths={ignoredPaths}
