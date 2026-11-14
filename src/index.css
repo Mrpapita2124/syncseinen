@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root,
+.theme-liquid {
   --bg-base: #050814;
   --text-primary: #f8fafc;
   --text-secondary: #cbd5e1;
@@ -20,9 +21,32 @@
   --orb-3: rgba(16, 185, 129, 0.16);
 }
 
+/* Tema de colores planos: Mayormente Negro y Rojo Planos */
+.theme-flat-red {
+  --bg-base: #09090b;
+  --text-primary: #fafafa;
+  --text-secondary: #d4d4d8;
+  --text-muted: #a1a1aa;
+  --glass-bg: #121215;
+  --glass-bg-hover: #18181c;
+  --glass-sub-bg: #0d0d10;
+  --glass-modal-bg: #121215;
+  --glass-border: #27272a;
+  --glass-border-strong: #ef4444;
+  --glass-shadow: none;
+  --glass-sub-shadow: none;
+  --orb-1: transparent;
+  --orb-2: transparent;
+  --orb-3: transparent;
+}
+
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);
+}
+
+body.theme-flat-red {
+  background-color: #09090b;
 }
 
 /* Liquid Glass Surfaces */
@@ -32,7 +56,7 @@ body {
   -webkit-backdrop-filter: blur(24px) saturate(190%);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
-  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: all 0.2s ease;
 }
 
 .liquid-glass-card {
@@ -41,7 +65,7 @@ body {
   -webkit-backdrop-filter: blur(26px) saturate(190%);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
 .liquid-glass-card:hover {
@@ -64,6 +88,84 @@ body {
   -webkit-backdrop-filter: blur(32px) saturate(200%);
   border: 1px solid var(--glass-border-strong);
   box-shadow: var(--glass-shadow);
+}
+
+/* Ajustes planos para el tema Negro y Rojo Plano */
+.theme-flat-red .liquid-glass,
+.theme-flat-red .liquid-glass-card,
+.theme-flat-red .liquid-glass-sub,
+.theme-flat-red .liquid-glass-modal {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+.theme-flat-red .animate-orb-1,
+.theme-flat-red .animate-orb-2 {
+  display: none !important;
+}
+
+/* Botones principales y barras de progreso en rojo plano */
+.theme-flat-red [class*="bg-gradient-to-r"] {
+  background-image: none !important;
+  background-color: #dc2626 !important;
+  box-shadow: none !important;
+}
+
+.theme-flat-red button[class*="bg-gradient-to-r"]:hover:not(:disabled) {
+  background-color: #ef4444 !important;
+}
+
+.theme-flat-red [class*="bg-gradient-to-br"] {
+  background-image: none !important;
+  background-color: #16161a !important;
+}
+
+/* Acentos de texto e iconos en rojo/blanco plano */
+.theme-flat-red .text-sky-400,
+.theme-flat-red .text-sky-300,
+.theme-flat-red .text-indigo-400,
+.theme-flat-red .text-emerald-400,
+.theme-flat-red .text-emerald-300,
+.theme-flat-red .text-amber-400,
+.theme-flat-red .text-amber-300 {
+  color: #ef4444 !important;
+}
+
+/* Botones secundarios (Pull, Push, Ignorar, etc.) en estilo plano negro/rojo */
+.theme-flat-red .bg-sky-500\/20,
+.theme-flat-red .bg-emerald-500\/20,
+.theme-flat-red .bg-emerald-500\/15,
+.theme-flat-red .bg-sky-500\/15,
+.theme-flat-red .bg-amber-500\/15,
+.theme-flat-red .bg-amber-500\/20 {
+  background-color: #18181c !important;
+  border-color: #dc2626 !important;
+  box-shadow: none !important;
+}
+
+.theme-flat-red button.bg-sky-500\/20:hover:not(:disabled),
+.theme-flat-red button.bg-emerald-500\/20:hover:not(:disabled),
+.theme-flat-red button.bg-amber-500\/15:hover:not(:disabled),
+.theme-flat-red button.bg-amber-500\/20:hover:not(:disabled) {
+  background-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.theme-flat-red .bg-emerald-500,
+.theme-flat-red .bg-amber-500 {
+  background-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.theme-flat-red .border-sky-400\/40,
+.theme-flat-red .border-sky-400\/30,
+.theme-flat-red .border-emerald-400\/40,
+.theme-flat-red .border-emerald-400\/30,
+.theme-flat-red .border-emerald-400\/25,
+.theme-flat-red .border-amber-400\/40,
+.theme-flat-red .border-amber-400\/30 {
+  border-color: #3f3f46 !important;
 }
 
 .liquid-text-primary {
@@ -109,6 +211,14 @@ body {
   border-radius: 9999px;
 }
 
+.theme-flat-red ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.55);
+}
+
+.theme-flat-red ::-webkit-scrollbar-thumb:hover {
+  background: #dc2626;
 }

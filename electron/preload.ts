@@ -3,8 +3,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('syncApi', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   setDeviceName: (name: string) => ipcRenderer.invoke('config:setDeviceName', name),
-  setPreferences: (prefs: { viewMode?: 'grid' | 'list' }) =>
-    ipcRenderer.invoke('config:setPreferences', prefs),
+  setPreferences: (prefs: {
+    viewMode?: 'grid' | 'list'
+    theme?: 'liquid' | 'flat-red'
+    closeBehavior?: 'tray' | 'quit'
+  }) => ipcRenderer.invoke('config:setPreferences', prefs),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   downloadAndInstallUpdate: (params: { downloadUrl: string; assetName: string }) =>
     ipcRenderer.invoke('update:downloadAndInstall', params),
@@ -18,6 +21,9 @@ contextBridge.exposeInMainWorld('syncApi', {
   logout: () => ipcRenderer.invoke('auth:logout'),
   pickLocalFolder: () => ipcRenderer.invoke('dialog:pickLocalFolder'),
   pickCoverImage: () => ipcRenderer.invoke('dialog:pickCoverImage'),
+  searchCoverImagesOnline: (query: string) => ipcRenderer.invoke('cover:searchOnline', query),
+  downloadCoverImageOnline: (params: { imageUrl: string; thumbnailUrl?: string }) =>
+    ipcRenderer.invoke('cover:downloadOnline', params),
   openLocalPath: (folderPath: string) => ipcRenderer.invoke('shell:openLocalPath', folderPath),
   listDriveFolders: (parentPath?: string) => ipcRenderer.invoke('drive:listFolders', parentPath),
   createDriveFolder: (name: string, parentPath?: string) =>
@@ -51,5 +57,13 @@ contextBridge.exposeInMainWorld('syncApi', {
     const listener = (_event: unknown, data: unknown) => callback(data)
     ipcRenderer.on('sync:progress', listener)
     return () => ipcRenderer.removeListener('sync:progress', listener)
+  },
+  onTrayAction: (callback: (action: 'pushAll' | 'pullAll') => void) => {
+    const listener = (_event: unknown, action: 'pushAll' | 'pullAll') => callback(action)
+    ipcRenderer.on('tray:action', listener)
+    return () => ipcRenderer.removeListener('tray:action', listener)
+  },
+  triggerTrayMenuAction: (action: string) => {
+    ipcRenderer.send('tray-menu:action', action)
   },
 })

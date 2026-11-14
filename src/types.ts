@@ -31,6 +31,8 @@ export interface AppConfig {
   isConnected: boolean
   rcloneVersion?: string
   appVersion?: string
+  theme?: 'liquid' | 'flat-red'
+  closeBehavior?: 'tray' | 'quit'
   viewMode?: 'grid' | 'list'
   localMappings: Record<string, LocalSyncMapping>
 }
@@ -69,10 +71,23 @@ export interface DriveFolderItem {
   parentPath: string
 }
 
+export interface OnlineImageItem {
+  id: string
+  title: string
+  thumbnail: string
+  image: string
+  width: number
+  height: number
+}
+
 export interface SyncApi {
   getConfig: () => Promise<AppConfig>
   setDeviceName: (name: string) => Promise<AppConfig>
-  setPreferences: (prefs: { viewMode?: 'grid' | 'list' }) => Promise<AppConfig>
+  setPreferences: (prefs: {
+    viewMode?: 'grid' | 'list'
+    theme?: 'liquid' | 'flat-red'
+    closeBehavior?: 'tray' | 'quit'
+  }) => Promise<AppConfig>
   checkForUpdates: () => Promise<UpdateCheckResult>
   downloadAndInstallUpdate: (params: {
     downloadUrl: string
@@ -84,6 +99,11 @@ export interface SyncApi {
   logout: () => Promise<AppConfig>
   pickLocalFolder: () => Promise<string | null>
   pickCoverImage: () => Promise<string | null>
+  searchCoverImagesOnline: (query: string) => Promise<OnlineImageItem[]>
+  downloadCoverImageOnline: (params: {
+    imageUrl: string
+    thumbnailUrl?: string
+  }) => Promise<string>
   openLocalPath: (folderPath: string) => Promise<void>
   listDriveFolders: (parentPath?: string) => Promise<DriveFolderItem[]>
   createDriveFolder: (name: string, parentPath?: string) => Promise<DriveFolderItem>
@@ -117,6 +137,7 @@ export interface SyncApi {
   pushAll: () => Promise<{ metas: SyncMetadata[]; config: AppConfig; processedCount: number }>
   pullAll: () => Promise<{ metas: SyncMetadata[]; config: AppConfig; processedCount: number }>
   onProgress: (callback: (event: SyncProgressEvent) => void) => () => void
+  onTrayAction: (callback: (action: 'pushAll' | 'pullAll') => void) => () => void
 }
 
 declare global {

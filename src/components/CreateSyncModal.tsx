@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { DriveFolderModal } from './DriveFolderModal'
 import { IgnoreFilesModal } from './IgnoreFilesModal'
+import { CoverPickerModal } from './CoverPickerModal'
 import { SyncProgressEvent } from '../types'
 
 interface CreateSyncModalProps {
@@ -45,6 +46,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
   const [coverImage, setCoverImage] = useState<string | null>(null)
   const [isDrivePickerOpen, setIsDrivePickerOpen] = useState(false)
   const [isIgnoreModalOpen, setIsIgnoreModalOpen] = useState(false)
+  const [isCoverPickerOpen, setIsCoverPickerOpen] = useState(false)
   const [creatingSubfolder, setCreatingSubfolder] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -97,11 +99,8 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
     }
   }
 
-  const handlePickCover = async () => {
-    const dataUrl = await window.syncApi.pickCoverImage()
-    if (dataUrl) {
-      setCoverImage(dataUrl)
-    }
+  const handlePickCover = () => {
+    setIsCoverPickerOpen(true)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -429,6 +428,14 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
         onClose={() => setIsIgnoreModalOpen(false)}
         onSave={(paths) => {
           setIgnoredPaths(paths)
+        }}
+      />
+
+      <CoverPickerModal
+        isOpen={isCoverPickerOpen}
+        onClose={() => setIsCoverPickerOpen(false)}
+        onSelectCover={(dataUrl) => {
+          setCoverImage(dataUrl)
         }}
       />
     </>

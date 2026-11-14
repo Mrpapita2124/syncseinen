@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, Tray, Menu, Notification, screen } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -43,6 +43,8 @@ export interface AppConfig {
   isConnected: boolean
   rcloneVersion?: string
   appVersion?: string
+  theme?: 'liquid' | 'flat-red'
+  closeBehavior?: 'tray' | 'quit'
   viewMode?: 'grid' | 'list'
   localMappings: Record<string, LocalSyncMapping>
 }
@@ -308,6 +310,7 @@ async function downloadAndApplyUpdate(
       })
       child.unref()
       setTimeout(() => {
+        isQuitting = true
         app.quit()
       }, 400)
       return
@@ -348,6 +351,7 @@ async function downloadAndApplyUpdate(
       })
       child.unref()
       setTimeout(() => {
+        isQuitting = true
         app.quit()
       }, 400)
       return
@@ -363,6 +367,7 @@ async function downloadAndApplyUpdate(
     })
     child.unref()
     setTimeout(() => {
+      isQuitting = true
       app.quit()
     }, 400)
   }
@@ -1370,15 +1375,403 @@ process.env.DIST = path.join(__dirname, '../dist')
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public')
 
 let win: BrowserWindow | null = null
+let tray: Tray | null = null
+let trayMenuWin: BrowserWindow | null = null
+let isQuitting = false
 let rcloneService: RcloneSyncService | null = null
 
+function resolveAppIconPath(): string {
+  const publicDir = process.env.VITE_PUBLIC || path.join(__dirname, '../dist')
+  const icoPath = path.join(publicDir, 'app-icon.ico')
+  const pngPath = path.join(publicDir, 'app-icon.png')
+  if (process.platform === 'win32' && fs.existsSync(icoPath)) {
+    return icoPath
+  }
+  return pngPath
+}
+
+function getAppIconDataUrl(): string {
+  try {
+    const publicDir = process.env.VITE_PUBLIC || path.join(__dirname, '../dist')
+    const pngPath = path.join(publicDir, 'app-icon.png')
+    if (fs.existsSync(pngPath)) {
+      const buf = fs.readFileSync(pngPath)
+      return `data:image/png;base64,${buf.toString('base64')}`
+    }
+  } catch {
+    // ignore
+  }
+  return ''
+}
+
+function showMainWindow() {
+  if (!win || win.isDestroyed()) {
+    createWindow()
+    return
+  }
+  if (win.isMinimized()) {
+    win.restore()
+  }
+  win.show()
+  win.focus()
+}
+
+function quitAppCompletely() {
+  isQuitting = true
+  try {
+    if (trayMenuWin && !trayMenuWin.isDestroyed()) {
+      trayMenuWin.destroy()
+      trayMenuWin = null
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    if (tray) {
+      tray.destroy()
+      tray = null
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    if (win && !win.isDestroyed()) {
+      win.destroy()
+      win = null
+    }
+  } catch {
+    // ignore
+  }
+  app.quit()
+  app.exit(0)
+}
+
+function handleTrayMenuAction(action: string) {
+  const iconPath = resolveAppIconPath()
+  if (trayMenuWin && !trayMenuWin.isDestroyed()) {
+    trayMenuWin.hide()
+  }
+
+  if (action === 'open') {
+    showMainWindow()
+  } else if (action === 'pushAll') {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('tray:action', 'pushAll')
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'SyncSeinen',
+          body: 'Iniciando Push a todas tus sincronizaciones en segundo plano...',
+          icon: iconPath,
+        }).show()
+      }
+    }
+  } else if (action === 'pullAll') {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('tray:action', 'pullAll')
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'SyncSeinen',
+          body: 'Iniciando Pull a todas tus sincronizaciones en segundo plano...',
+          icon: iconPath,
+        }).show()
+      }
+    }
+  } else if (action === 'quit') {
+    quitAppCompletely()
+  }
+}
+
+function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: string): string {
+  return `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<style>
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    margin: 0;
+    padding: 0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+  }
+  .menu-card {
+    width: 100%;
+    height: 100%;
+    border-radius: 18px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  /* Tema Actual: Liquid Glass */
+  body.theme-liquid .menu-card {
+    background: linear-gradient(155deg, rgba(12, 20, 38, 0.96), rgba(7, 11, 24, 0.98));
+    border: 1px solid rgba(56, 189, 248, 0.28);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.18);
+    color: #f8fafc;
+  }
+  /* Tema Negro y Rojo Plano */
+  body.theme-flat-red .menu-card {
+    background: #121215;
+    border: 1px solid #dc2626;
+    color: #fafafa;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 8px 9px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  body.theme-flat-red .header {
+    border-bottom: 1px solid #27272a;
+  }
+  .header img {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    object-fit: cover;
+  }
+  .header-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .header-sub {
+    font-size: 10px;
+    color: #94a3b8;
+  }
+  body.theme-flat-red .header-sub {
+    color: #a1a1aa;
+  }
+  .items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 6px;
+  }
+  .item-btn {
+    width: 100%;
+    border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.03);
+    color: #e2e8f0;
+    border-radius: 11px;
+    padding: 8px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+  }
+  body.theme-flat-red .item-btn {
+    background: #18181c;
+    border-color: #27272a;
+    color: #f4f4f5;
+  }
+  body.theme-liquid .item-btn:hover {
+    background: rgba(56, 189, 248, 0.18);
+    border-color: rgba(56, 189, 248, 0.4);
+    color: #ffffff;
+  }
+  body.theme-flat-red .item-btn:hover {
+    background: #dc2626;
+    border-color: #ef4444;
+    color: #ffffff;
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+  body.theme-liquid .dot-open { background: #38bdf8; }
+  body.theme-liquid .dot-push { background: #34d399; }
+  body.theme-liquid .dot-pull { background: #818cf8; }
+  body.theme-liquid .dot-quit { background: #fb7185; }
+
+  body.theme-flat-red .dot-open,
+  body.theme-flat-red .dot-push,
+  body.theme-flat-red .dot-pull,
+  body.theme-flat-red .dot-quit {
+    background: #ef4444;
+  }
+  body.theme-flat-red .item-btn:hover .dot {
+    background: #ffffff;
+  }
+  .sep {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 2px 4px;
+  }
+  body.theme-flat-red .sep {
+    background: #27272a;
+  }
+  body.theme-liquid .item-quit:hover {
+    background: rgba(244, 63, 94, 0.22);
+    border-color: rgba(251, 113, 133, 0.45);
+    color: #fecdd3;
+  }
+</style>
+</head>
+<body class="${initialTheme === 'flat-red' ? 'theme-flat-red' : 'theme-liquid'}">
+  <div class="menu-card">
+    <div class="header">
+      ${iconDataUrl ? `<img src="${iconDataUrl}" alt="SyncSeinen" />` : ''}
+      <div>
+        <div class="header-title">SyncSeinen</div>
+        <div class="header-sub">Menú rápido en segundo plano</div>
+      </div>
+    </div>
+    <div class="items">
+      <button class="item-btn" onclick="trigger('open')">
+        <span class="dot dot-open"></span>
+        <span>Abrir la aplicación</span>
+      </button>
+      <button class="item-btn" onclick="trigger('pushAll')">
+        <span class="dot dot-push"></span>
+        <span>Hacer push a todo</span>
+      </button>
+      <button class="item-btn" onclick="trigger('pullAll')">
+        <span class="dot dot-pull"></span>
+        <span>Hacer pull a todo</span>
+      </button>
+      <div class="sep"></div>
+      <button class="item-btn item-quit" onclick="trigger('quit')">
+        <span class="dot dot-quit"></span>
+        <span>Cerrarla por completo</span>
+      </button>
+    </div>
+  </div>
+  <script>
+    function trigger(action) {
+      if (window.syncApi && window.syncApi.triggerTrayMenuAction) {
+        window.syncApi.triggerTrayMenuAction(action);
+      }
+    }
+    window.setTrayTheme = function(t) {
+      document.body.className = t === 'flat-red' ? 'theme-flat-red' : 'theme-liquid';
+    };
+  </script>
+</body>
+</html>`
+}
+
+function ensureTrayMenuWindow(): BrowserWindow {
+  if (trayMenuWin && !trayMenuWin.isDestroyed()) {
+    return trayMenuWin
+  }
+
+  const cfg = loadConfig()
+  const initialTheme = cfg.theme === 'flat-red' ? 'flat-red' : 'liquid'
+  const iconDataUrl = getAppIconDataUrl()
+
+  trayMenuWin = new BrowserWindow({
+    width: 246,
+    height: 236,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  const html = buildTrayMenuHtml(initialTheme, iconDataUrl)
+  trayMenuWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+
+  trayMenuWin.on('blur', () => {
+    if (trayMenuWin && !trayMenuWin.isDestroyed()) {
+      trayMenuWin.hide()
+    }
+  })
+
+  return trayMenuWin
+}
+
+function updateTrayMenuWindowTheme(theme: 'liquid' | 'flat-red') {
+  if (trayMenuWin && !trayMenuWin.isDestroyed()) {
+    trayMenuWin.webContents
+      .executeJavaScript(`window.setTrayTheme && window.setTrayTheme(${JSON.stringify(theme)})`)
+      .catch(() => {})
+  }
+}
+
+function showCustomTrayMenu() {
+  const menuWin = ensureTrayMenuWindow()
+  const cfg = loadConfig()
+  const currentTheme = cfg.theme === 'flat-red' ? 'flat-red' : 'liquid'
+  updateTrayMenuWindowTheme(currentTheme)
+
+  const cursor = screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(cursor)
+  const workArea = display.workArea
+  const menuWidth = 246
+  const menuHeight = 236
+
+  let x = Math.round(cursor.x - menuWidth / 2)
+  let y = Math.round(cursor.y - menuHeight - 10)
+
+  if (x < workArea.x + 8) x = workArea.x + 8
+  if (x + menuWidth > workArea.x + workArea.width - 8) {
+    x = workArea.x + workArea.width - menuWidth - 8
+  }
+  if (y < workArea.y + 8) {
+    y = Math.min(cursor.y + 10, workArea.y + workArea.height - menuHeight - 8)
+  }
+
+  menuWin.setPosition(x, y, false)
+  menuWin.show()
+  menuWin.focus()
+}
+
+function createTray() {
+  if (tray) return
+
+  const iconPath = resolveAppIconPath()
+  const iconImg = nativeImage.createFromPath(iconPath)
+  tray = new Tray(iconImg)
+  tray.setToolTip('SyncSeinen')
+
+  ensureTrayMenuWindow()
+
+  // Al dar clic izquierdo o derecho en el icono de la bandeja del sistema, abrir el menú tematizado
+  tray.on('click', () => {
+    showCustomTrayMenu()
+  })
+  tray.on('right-click', () => {
+    showCustomTrayMenu()
+  })
+}
+
 function createWindow() {
+  const iconPath = resolveAppIconPath()
+
   win = new BrowserWindow({
     width: 1200,
     height: 820,
     minWidth: 940,
     minHeight: 660,
-    title: 'SyncSeinen — Sincronización Multi-Dispositivo con Google Drive (Rclone)',
+    title: 'SyncSeinen',
+    icon: iconPath,
     backgroundColor: '#020617',
     autoHideMenuBar: true,
     webPreferences: {
@@ -1386,6 +1779,25 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  })
+
+  win.on('page-title-updated', (event) => {
+    event.preventDefault()
+  })
+
+  // Al cerrar con la X, respetar la preferencia del usuario: quedarse en segundo plano o cerrarse por completo
+  win.on('close', (event) => {
+    if (!isQuitting) {
+      const cfg = loadConfig()
+      const behavior = cfg.closeBehavior || 'tray'
+      if (behavior === 'tray') {
+        event.preventDefault()
+        win?.hide()
+      } else {
+        event.preventDefault()
+        quitAppCompletely()
+      }
+    }
   })
 
   rcloneService = new RcloneSyncService((progress) => {
@@ -1401,21 +1813,43 @@ function createWindow() {
   }
 }
 
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  isQuitting = true
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    showMainWindow()
+  })
+}
+
+app.on('before-quit', () => {
+  isQuitting = true
+})
+
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (isQuitting && process.platform !== 'darwin') {
     app.quit()
     win = null
   }
 })
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
-  }
+  showMainWindow()
 })
+
+app.setName('SyncSeinen')
+if (process.platform === 'win32') {
+  app.setAppUserModelId('SyncSeinen')
+}
 
 app.whenReady().then(() => {
   createWindow()
+  createTray()
+
+  ipcMain.on('tray-menu:action', (_e, action: string) => {
+    handleTrayMenuAction(action)
+  })
 
   ipcMain.handle('config:get', async () => {
     const cfg = loadConfig()
@@ -1437,9 +1871,21 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'config:setPreferences',
-    async (_e, prefs: { viewMode?: 'grid' | 'list' }) => {
+    async (
+      _e,
+      prefs: {
+        viewMode?: 'grid' | 'list'
+        theme?: 'liquid' | 'flat-red'
+        closeBehavior?: 'tray' | 'quit'
+      }
+    ) => {
       const cfg = loadConfig()
       if (prefs.viewMode) cfg.viewMode = prefs.viewMode
+      if (prefs.theme) {
+        cfg.theme = prefs.theme
+        updateTrayMenuWindowTheme(prefs.theme)
+      }
+      if (prefs.closeBehavior) cfg.closeBehavior = prefs.closeBehavior
       saveConfig(cfg)
       return cfg
     }
@@ -1495,6 +1941,137 @@ app.whenReady().then(() => {
     const jpegBuf = resized.toJPEG(82)
     return `data:image/jpeg;base64,${jpegBuf.toString('base64')}`
   })
+
+  ipcMain.handle('cover:searchOnline', async (_e, query: string) => {
+    const cleanQuery = (query || '').trim()
+    if (!cleanQuery) return []
+
+    const ddgHeaders = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      Accept: '*/*',
+      'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8',
+      Referer: 'https://duckduckgo.com/',
+    }
+
+    const encoded = encodeURIComponent(cleanQuery)
+    const tokenRes = await fetch(`https://duckduckgo.com/?q=${encoded}&iax=images&ia=images`, {
+      headers: ddgHeaders,
+    })
+    if (!tokenRes.ok) {
+      throw new Error(`No se pudo conectar con DuckDuckGo Images (HTTP ${tokenRes.status})`)
+    }
+    const tokenHtml = await tokenRes.text()
+    const vqdMatch = tokenHtml.match(/vqd=['"]?([\d-]+)['"]?/)
+    if (!vqdMatch || !vqdMatch[1]) {
+      throw new Error('No se pudo obtener el token de búsqueda de DuckDuckGo Images.')
+    }
+
+    const vqd = vqdMatch[1]
+    const apiRes = await fetch(
+      `https://duckduckgo.com/i.js?l=us-en&o=json&q=${encoded}&vqd=${vqd}&f=,,,,,&p=1`,
+      { headers: ddgHeaders }
+    )
+    if (!apiRes.ok) {
+      throw new Error(`Error al consultar resultados en DuckDuckGo Images (HTTP ${apiRes.status})`)
+    }
+
+    const data = (await apiRes.json()) as {
+      results?: Array<{
+        title?: string
+        image?: string
+        thumbnail?: string
+        width?: number
+        height?: number
+      }>
+    }
+
+    const rawResults = Array.isArray(data.results) ? data.results : []
+    return rawResults
+      .filter((item) => item && (item.thumbnail || item.image))
+      .slice(0, 60)
+      .map((item, idx) => ({
+        id: `${idx}-${item.thumbnail || item.image}`,
+        title: item.title || cleanQuery,
+        thumbnail: item.thumbnail || item.image || '',
+        image: item.image || item.thumbnail || '',
+        width: item.width || 0,
+        height: item.height || 0,
+      }))
+  })
+
+  ipcMain.handle(
+    'cover:downloadOnline',
+    async (_e, params: { imageUrl: string; thumbnailUrl?: string }) => {
+      const fetchImageBuffer = async (url: string): Promise<{ buf: Buffer; contentType: string }> => {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 9000)
+        try {
+          const res = await fetch(url, {
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            },
+            signal: controller.signal,
+          })
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`)
+          }
+          const arrayBuf = await res.arrayBuffer()
+          const buf = Buffer.from(arrayBuf)
+          if (buf.length < 128) {
+            throw new Error('Imagen vacía o inválida')
+          }
+          return {
+            buf,
+            contentType: res.headers.get('content-type') || 'image/jpeg',
+          }
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+
+      const convertBufferToDataUrl = (buf: Buffer, contentType: string): string | null => {
+        const img = nativeImage.createFromBuffer(buf)
+        if (!img.isEmpty()) {
+          const size = img.getSize()
+          const maxWidth = 640
+          const resized =
+            size.width > maxWidth ? img.resize({ width: maxWidth, quality: 'good' }) : img
+          const jpegBuf = resized.toJPEG(82)
+          return `data:image/jpeg;base64,${jpegBuf.toString('base64')}`
+        }
+        if (contentType.includes('image/')) {
+          const cleanMime = contentType.split(';')[0].trim()
+          return `data:${cleanMime};base64,${buf.toString('base64')}`
+        }
+        return null
+      }
+
+      // Intentar primero con la imagen completa; si falla o bloquea hotlinking, usar el thumbnail de DuckDuckGo/Bing
+      const urlsToTry = [params.imageUrl, params.thumbnailUrl].filter(
+        (u): u is string => Boolean(u && u.trim())
+      )
+
+      let lastErr: unknown = null
+      for (const targetUrl of urlsToTry) {
+        try {
+          const { buf, contentType } = await fetchImageBuffer(targetUrl)
+          const dataUrl = convertBufferToDataUrl(buf, contentType)
+          if (dataUrl) return dataUrl
+        } catch (err) {
+          lastErr = err
+        }
+      }
+
+      throw new Error(
+        lastErr instanceof Error
+          ? `No se pudo descargar la imagen seleccionada: ${lastErr.message}`
+          : 'No se pudo descargar la imagen seleccionada.'
+      )
+    }
+  )
 
   ipcMain.handle('auth:login', async () => {
     const cfg = await rcloneService!.loginWithRclone()

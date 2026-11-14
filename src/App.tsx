@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Check,
   CheckCircle2,
   Cloud,
   EyeOff,
@@ -19,8 +20,8 @@ import {
   Plus,
   RefreshCw,
   Rocket,
+  Settings,
   ShieldCheck,
-  Sparkles,
   Terminal,
   Trash2,
   X,
@@ -36,6 +37,7 @@ import {
 import { CreateSyncModal } from './components/CreateSyncModal'
 import { IgnoreFilesModal } from './components/IgnoreFilesModal'
 import { UpdateModal } from './components/UpdateModal'
+import { CoverPickerModal } from './components/CoverPickerModal'
 
 export const App: React.FC = () => {
   const [config, setConfig] = useState<AppConfig | null>(null)
@@ -51,8 +53,13 @@ export const App: React.FC = () => {
   const [editingDevice, setEditingDevice] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [editingIgnoreSync, setEditingIgnoreSync] = useState<SyncMetadata | null>(null)
+  const [editingCoverSync, setEditingCoverSync] = useState<SyncMetadata | null>(null)
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [theme, setTheme] = useState<'liquid' | 'flat-red'>('liquid')
+  const [closeBehavior, setCloseBehavior] = useState<'tray' | 'quit'>('tray')
+  const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false)
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null)
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null)
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
   const [updateProgress, setUpdateProgress] = useState<UpdateProgressEvent | null>(null)
@@ -60,8 +67,18 @@ export const App: React.FC = () => {
   const isAuthenticated = Boolean(config?.isConnected)
 
   useEffect(() => {
-    document.body.classList.remove('theme-light')
-    document.body.classList.add('theme-dark')
+    document.body.classList.remove('theme-light', 'theme-dark', 'theme-liquid', 'theme-flat-red')
+    document.body.classList.add(theme === 'flat-red' ? 'theme-flat-red' : 'theme-liquid')
+  }, [theme])
+
+  useEffect(() => {
+    const handleClickOutside = (ev: MouseEvent) => {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(ev.target as Node)) {
+        setIsSettingsMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   const showBanner = (type: 'success' | 'error', text: string) => {
@@ -111,6 +128,10 @@ export const App: React.FC = () => {
         setConfig(cfg)
         setDeviceNameInput(cfg.deviceName)
         if (cfg.viewMode) setViewMode(cfg.viewMode)
+        if (cfg.theme === 'flat-red' || cfg.theme === 'liquid') setTheme(cfg.theme)
+        if (cfg.closeBehavior === 'tray' || cfg.closeBehavior === 'quit') {
+          setCloseBehavior(cfg.closeBehavior)
+        }
 
         if (cfg.isConnected) {
           await refreshMetadatas()
@@ -131,6 +152,18 @@ export const App: React.FC = () => {
   const handleChangeViewMode = async (mode: 'grid' | 'list') => {
     setViewMode(mode)
     const updated = await window.syncApi.setPreferences({ viewMode: mode })
+    setConfig(updated)
+  }
+
+  const handleChangeTheme = async (nextTheme: 'liquid' | 'flat-red') => {
+    setTheme(nextTheme)
+    const updated = await window.syncApi.setPreferences({ theme: nextTheme })
+    setConfig(updated)
+  }
+
+  const handleChangeCloseBehavior = async (nextBehavior: 'tray' | 'quit') => {
+    setCloseBehavior(nextBehavior)
+    const updated = await window.syncApi.setPreferences({ closeBehavior: nextBehavior })
     setConfig(updated)
   }
 
@@ -196,10 +229,11 @@ export const App: React.FC = () => {
     }
   }
 
-  const handleChangeCoverForSync = async (sync: SyncMetadata) => {
-    const dataUrl = await window.syncApi.pickCoverImage()
-    if (!dataUrl) return
+  const handleChangeCoverForSync = (sync: SyncMetadata) => {
+    setEditingCoverSync(sync)
+  }
 
+  const handleApplyCoverForSync = async (sync: SyncMetadata, dataUrl: string) => {
     setBusyAction(`cover-${sync.id}`)
     try {
       const { meta, config: updatedCfg } = await window.syncApi.updateCoverImage(sync.id, dataUrl)
@@ -372,6 +406,19 @@ export const App: React.FC = () => {
     }
   }
 
+  useEffect(() => {
+    const unsubscribeTray = window.syncApi.onTrayAction((action) => {
+      if (action === 'pushAll') {
+        handlePushAll()
+      } else if (action === 'pullAll') {
+        handlePullAll()
+      }
+    })
+    return () => {
+      unsubscribeTray()
+    }
+  })
+
   const formatDate = (iso: string | null | undefined) => {
     if (!iso) return 'Sin registro aún'
     try {
@@ -396,7 +443,11 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-x-hidden theme-dark">
+    <div
+      className={`min-h-screen flex flex-col relative overflow-x-hidden ${
+        theme === 'flat-red' ? 'theme-flat-red' : 'theme-liquid'
+      }`}
+    >
       {/* Ambient Liquid Glass Light Orbs */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <div
@@ -417,16 +468,14 @@ export const App: React.FC = () => {
       <header className="liquid-glass border-x-0 border-t-0 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-sky-400 via-indigo-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-sky-500/25 border border-white/30">
-              <FolderSync className="w-5 h-5 text-white" />
-            </div>
+            <img
+              src="./app-icon.png"
+              alt="SyncSeinen"
+              className="w-11 h-11 rounded-2xl object-cover shadow-lg border border-white/20"
+            />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-extrabold tracking-tight liquid-text-primary">SyncSeinen</h1>
-                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-400/30 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  Liquid Glass {config?.appVersion ? `v${config.appVersion}` : ''}
-                </span>
               </div>
               <p className="text-xs liquid-text-muted">
                 Sincronización multi-dispositivo con Google Drive &bull; Motor Rclone
@@ -434,7 +483,7 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Controls: Update Notification (replaces old theme button) + Device Name + Account */}
+          {/* Right Controls: Update Notification + Device Name + Account + App Icon on top-right */}
           <div className="flex items-center gap-2.5 flex-wrap">
             {updateInfo?.hasUpdate && (
               <button
@@ -491,6 +540,126 @@ export const App: React.FC = () => {
                 </button>
               </div>
             )}
+
+            {/* Botón de engrane con menú pequeño de configuración arriba a la derecha */}
+            <div className="relative" ref={settingsMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsSettingsMenuOpen((prev) => !prev)}
+                title="Configuración"
+                className="w-10 h-10 rounded-2xl liquid-glass-sub hover:bg-white/10 flex items-center justify-center liquid-text-primary transition"
+              >
+                <Settings
+                  className={`w-5 h-5 transition-transform duration-200 ${
+                    isSettingsMenuOpen ? 'rotate-90 text-sky-400' : ''
+                  }`}
+                />
+              </button>
+
+              {isSettingsMenuOpen && (
+                <div
+                  className={`absolute right-0 mt-2 w-64 rounded-2xl p-3 z-50 space-y-3 ${
+                    theme === 'flat-red'
+                      ? 'bg-[#121215] border border-red-600'
+                      : 'liquid-glass-modal shadow-2xl'
+                  }`}
+                >
+                  {/* Opción 1: Comportamiento al cerrar */}
+                  <div>
+                    <span className="block text-[10px] font-bold uppercase tracking-wider liquid-text-muted px-2 mb-1.5">
+                      Al cerrar la aplicación
+                    </span>
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => handleChangeCloseBehavior('tray')}
+                        className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition ${
+                          closeBehavior === 'tray'
+                            ? theme === 'flat-red'
+                              ? 'bg-red-600 text-white border border-red-500'
+                              : 'liquid-glass-sub text-sky-400 border border-sky-400/40'
+                            : theme === 'flat-red'
+                              ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
+                              : 'liquid-text-secondary hover:bg-white/10'
+                        }`}
+                      >
+                        <span>Quedarse en segundo plano</span>
+                        {closeBehavior === 'tray' && <Check className="w-3.5 h-3.5" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleChangeCloseBehavior('quit')}
+                        className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition ${
+                          closeBehavior === 'quit'
+                            ? theme === 'flat-red'
+                              ? 'bg-red-600 text-white border border-red-500'
+                              : 'liquid-glass-sub text-sky-400 border border-sky-400/40'
+                            : theme === 'flat-red'
+                              ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
+                              : 'liquid-text-secondary hover:bg-white/10'
+                        }`}
+                      >
+                        <span>Cerrarse por completo</span>
+                        {closeBehavior === 'quit' && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`border-t ${
+                      theme === 'flat-red' ? 'border-zinc-800' : 'border-white/10'
+                    }`}
+                  />
+
+                  {/* Opción 2: Tema visual */}
+                  <div>
+                    <span className="block text-[10px] font-bold uppercase tracking-wider liquid-text-muted px-2 mb-1.5">
+                      Tema visual
+                    </span>
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => handleChangeTheme('liquid')}
+                        className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition ${
+                          theme === 'liquid'
+                            ? 'liquid-glass-sub text-sky-400 border border-sky-400/40'
+                            : 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="w-3 h-3 rounded-full inline-block"
+                            style={{ background: 'linear-gradient(135deg, #38bdf8, #6366f1)' }}
+                          />
+                          Actual (Liquid Glass)
+                        </span>
+                        {theme === 'liquid' && <Check className="w-3.5 h-3.5" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleChangeTheme('flat-red')}
+                        className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition ${
+                          theme === 'flat-red'
+                            ? 'bg-red-600 text-white border border-red-500'
+                            : 'liquid-text-secondary hover:bg-white/10'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="w-3 h-3 rounded-full inline-block border border-white/30"
+                            style={{ backgroundColor: '#dc2626' }}
+                          />
+                          Negro y Rojo Plano
+                        </span>
+                        {theme === 'flat-red' && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -1213,6 +1382,16 @@ export const App: React.FC = () => {
           updateInfo={updateInfo}
           updateProgress={updateProgress}
           onClose={() => setIsUpdateModalOpen(false)}
+        />
+      )}
+
+      {editingCoverSync && (
+        <CoverPickerModal
+          isOpen={Boolean(editingCoverSync)}
+          onClose={() => setEditingCoverSync(null)}
+          onSelectCover={async (dataUrl) => {
+            await handleApplyCoverForSync(editingCoverSync, dataUrl)
+          }}
         />
       )}
     </div>
