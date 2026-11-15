@@ -6,13 +6,14 @@ on:
       tag_name:
         description: 'Tag de la release en GitHub'
         required: false
-        default: '1.4.1-.linux-experimental'
+        default: '1.4.2-.linux-experimental'
       release_name:
         description: 'Título visible de la release'
         required: false
-        default: '1.4.1-.linux experimental'
+        default: '1.4.2-.linux experimental'
   push:
     tags:
+      - 'v*'
       - '*linux*'
 
 permissions:
@@ -49,10 +50,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag_name || github.ref_name }}
-          name: ${{ inputs.release_name || '1.4.1-.linux experimental' }}
-          prerelease: true
+          name: ${{ inputs.release_name || (startsWith(github.ref_name, 'v') && format('SyncSeinen {0}', github.ref_name)) || github.ref_name }}
+          prerelease: ${{ contains(inputs.tag_name || github.ref_name, 'experimental') }}
           files: |
             release/SyncSeinen-Linux.AppImage
           body: |
-            Compilación experimental de **SyncSeinen v1.4.1** para Linux (`AppImage` x64).
+            Compilación para Linux (`AppImage` x64) de **SyncSeinen**.
             Incluye binario integrado de `rclone` para Linux.
