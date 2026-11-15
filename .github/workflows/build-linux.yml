@@ -1,0 +1,58 @@
+name: Build Linux AppImage
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag de la release en GitHub'
+        required: false
+        default: '1.4.1-.linux-experimental'
+      release_name:
+        description: 'Título visible de la release'
+        required: false
+        default: '1.4.1-.linux experimental'
+  push:
+    tags:
+      - '*linux*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download Linux rclone binary
+        run: |
+          mkdir -p resources/bin
+          curl -fsSL https://downloads.rclone.org/rclone-current-linux-amd64.zip -o /tmp/rclone.zip
+          unzip -j -o /tmp/rclone.zip "*/rclone" -d resources/bin
+          chmod +x resources/bin/rclone
+          rm -f /tmp/rclone.zip
+
+      - name: Build AppImage
+        run: npm run build:linux
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
+          name: ${{ inputs.release_name || '1.4.1-.linux experimental' }}
+          prerelease: true
+          files: |
+            release/SyncSeinen-Linux.AppImage
+          body: |
+            Compilación experimental de **SyncSeinen v1.4.1** para Linux (`AppImage` x64).
+            Incluye binario integrado de `rclone` para Linux.
