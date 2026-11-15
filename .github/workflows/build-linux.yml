@@ -54,6 +54,3 @@ jobs:
           prerelease: ${{ contains(inputs.tag_name || github.ref_name, 'experimental') }}
           files: |
             release/SyncSeinen-Linux.AppImage
-          body: |
-            Compilación para Linux (`AppImage` x64) de **SyncSeinen**.
-            Incluye binario integrado de `rclone` para Linux.

@@ -275,8 +275,7 @@ async function checkGitHubUpdates(): Promise<UpdateCheckResult> {
     let selectedAsset: { name: string; browser_download_url: string } | undefined
 
     if (process.platform === 'linux') {
-      selectedAsset =
-        assets.find((a) => a.name.toLowerCase().endsWith('.appimage')) || assets[0]
+      selectedAsset = assets.find((a) => a.name.toLowerCase().endsWith('.appimage'))
     } else {
       const isPortable = Boolean(process.env.PORTABLE_EXECUTABLE_FILE)
       if (isPortable) {

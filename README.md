@@ -58,14 +58,19 @@
 
 ---
 
-## 🆕 Novedades de la Versión 1.4.2
+## 🆕 Novedades de la Versión 1.4.3
 
-- **Nuevo Tema Visual `Material` (Material 3 Expressive):**
-  - Nuevo tema seleccionable desde el menú de configuración con paleta en ciruela oscuro (`#140919` / `#24102b`), botones en forma de píldora lila (`#cf9fff`), acentos coral (`#ff9e9d`), tarjetas con esquinas amplias (`26px`) y menú rápido de bandeja adaptado al tema.
+- **Actualizador multiplataforma unificado (Windows + Linux):**
+  - Las versiones oficiales (`v1.4.3+`) ahora publican tanto **`SyncSeinen-Portable.exe`** (Windows) como **`SyncSeinen-Linux.AppImage`** (Linux) dentro de la misma Release de GitHub.
+  - Se corrigió el buscador de actualizaciones en Linux para que seleccione estrictamente el archivo `.AppImage` y nunca haga fallback al `.exe` de Windows.
 
 ---
 
 ## 🕓 Historial de Versiones Recientes
+
+### Versión 1.4.2
+- **Nuevo Tema Visual `Material` (Material 3 Expressive):**
+  - Nuevo tema seleccionable desde el menú de configuración con paleta en ciruela oscuro (`#140919` / `#24102b`), botones en forma de píldora lila (`#cf9fff`), acentos coral (`#ff9e9d`), tarjetas con esquinas amplias (`26px`) y menú rápido de bandeja adaptado al tema.
 
 ### Versión 1.4.1
 - **Vista `Todos` en orden alfabético:** En el escáner de saves de videojuegos, la pestaña **Todos** muestra todos los saves sin dividir por secciones y ordenados alfabéticamente.
