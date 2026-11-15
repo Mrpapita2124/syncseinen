@@ -381,32 +381,6 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
               )}
             </div>
 
-            {/* Opción para marcar como Sincronización de Videojuego */}
-            <label
-              className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition ${
-                isGameSave
-                  ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-300'
-                  : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:border-white/25'
-              }`}
-            >
-              <input
-                type="checkbox"
-                disabled={isCreating}
-                checked={isGameSave}
-                onChange={(e) => setIsGameSave(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded accent-emerald-500 cursor-pointer flex-shrink-0"
-              />
-              <div className="flex-1 text-left">
-                <div className="flex items-center gap-2 text-xs font-extrabold liquid-text-primary">
-                  <Gamepad2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Marcar como Save de Videojuego (enviar al apartado de Videojuegos)</span>
-                </div>
-                <p className="text-[11px] liquid-text-muted mt-0.5 leading-relaxed">
-                  Activa esta casilla si estás sincronizando la partida de un videojuego que no fue detectado automáticamente.
-                </p>
-              </div>
-            </label>
-
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
                 3. Carpeta en {providerLabel} (Destino donde rclone guardará los archivos)
@@ -479,31 +453,44 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/15">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-xl liquid-glass liquid-text-secondary text-sm font-medium transition hover:opacity-90"
-              >
-                {isCreating ? 'Minimizar a barra superior' : 'Cancelar'}
-              </button>
-              <button
-                type="submit"
-                disabled={isCreating || creatingSubfolder || !name.trim() || !driveFolder || !localPath}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:via-sky-400 hover:to-emerald-400 disabled:opacity-50 text-white text-sm font-bold flex items-center gap-2 transition shadow-lg shadow-sky-500/25"
-              >
-                {isCreating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Subiendo con rclone...
-                  </>
-                ) : (
-                  <>
-                    <FolderOpen className="w-4 h-4" />
-                    Crear Sincronización y Hacer Push
-                  </>
-                )}
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/15">
+              <label className="flex items-center gap-2 text-xs font-medium liquid-text-secondary cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  disabled={isCreating}
+                  checked={isGameSave}
+                  onChange={(e) => setIsGameSave(e.target.checked)}
+                  className="w-4 h-4 rounded accent-emerald-500 cursor-pointer flex-shrink-0"
+                />
+                <span>Marcar como Videojuego</span>
+              </label>
+
+              <div className="flex items-center gap-3 ml-auto">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2.5 rounded-xl liquid-glass liquid-text-secondary text-sm font-medium transition hover:opacity-90"
+                >
+                  {isCreating ? 'Minimizar a barra superior' : 'Cancelar'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreating || creatingSubfolder || !name.trim() || !driveFolder || !localPath}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:via-sky-400 hover:to-emerald-400 disabled:opacity-50 text-white text-sm font-bold flex items-center gap-2 transition shadow-lg shadow-sky-500/25"
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Subiendo con rclone...
+                    </>
+                  ) : (
+                    <>
+                      <FolderOpen className="w-4 h-4" />
+                      Crear Sincronización y Hacer Push
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </form>
         </div>

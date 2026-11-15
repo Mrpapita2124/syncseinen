@@ -3156,11 +3156,138 @@ function scanEmulatorSavesWithEmuAtlasAndEmuVault(ctx: {
       if (!fs.existsSync(sysDir)) continue
       scanFlatEmulatorSaveDir(
         sysDir,
-        `EmuVault ${sysLabel}`,
+        sysLabel,
         sysLabel,
         'emuvault',
         /\.(sav|srm|dsv|sra|eep|fla|mcr|mcd)$/i
       )
+    }
+  }
+
+  // Recompilaciones y Ports a PC (BanjoRecompiled, Zelda64Recompiled, Ship of Harkinian, UnleashedRecomp, OpenGOAL, etc.)
+  const pcRecompProfiles: Array<{
+    name: string
+    searchTitle: string
+    candidates: string[]
+  }> = [
+    {
+      name: 'Banjo-Kazooie (Banjo: Recompiled)',
+      searchTitle: 'Banjo-Kazooie',
+      candidates: [
+        path.join(ctx.localAppData, 'BanjoRecompiled', 'saves'),
+        path.join(ctx.localAppData, 'BanjoRecompiled'),
+        path.join(ctx.appData, 'BanjoRecompiled'),
+      ],
+    },
+    {
+      name: "Majora's Mask (Zelda 64: Recompiled)",
+      searchTitle: "The Legend of Zelda: Majora's Mask",
+      candidates: [
+        path.join(ctx.localAppData, 'Zelda64Recompiled', 'saves'),
+        path.join(ctx.localAppData, 'Zelda64Recompiled'),
+        path.join(ctx.appData, 'Zelda64Recompiled'),
+      ],
+    },
+    {
+      name: 'Ocarina of Time (Ship of Harkinian)',
+      searchTitle: 'The Legend of Zelda: Ocarina of Time',
+      candidates: [
+        path.join(ctx.appData, 'soh', 'Save'),
+        path.join(ctx.localAppData, 'soh', 'Save'),
+        path.join(ctx.appData, 'Ship of Harkinian', 'Save'),
+      ],
+    },
+    {
+      name: "Majora's Mask (2Ship2Harkinian)",
+      searchTitle: "The Legend of Zelda: Majora's Mask",
+      candidates: [
+        path.join(ctx.appData, '2ship', 'Save'),
+        path.join(ctx.localAppData, '2ship', 'Save'),
+        path.join(ctx.appData, '2Ship2Harkinian', 'Save'),
+      ],
+    },
+    {
+      name: 'Sonic Unleashed (UnleashedRecomp)',
+      searchTitle: 'Sonic Unleashed',
+      candidates: [
+        path.join(ctx.appData, 'UnleashedRecomp', 'save'),
+        path.join(ctx.localAppData, 'UnleashedRecomp', 'save'),
+        path.join(ctx.appData, 'UnleashedRecomp'),
+      ],
+    },
+    {
+      name: 'Star Fox 64 (Starship)',
+      searchTitle: 'Star Fox 64',
+      candidates: [
+        path.join(ctx.localAppData, 'Starship', 'saves'),
+        path.join(ctx.appData, 'Starship', 'saves'),
+      ],
+    },
+    {
+      name: 'Mario Kart 64 (SpaghettiKart)',
+      searchTitle: 'Mario Kart 64',
+      candidates: [
+        path.join(ctx.localAppData, 'SpaghettiKart'),
+        path.join(ctx.appData, 'SpaghettiKart'),
+      ],
+    },
+    {
+      name: 'Super Mario 64 PC (sm64ex / Render96ex)',
+      searchTitle: 'Super Mario 64',
+      candidates: [
+        path.join(ctx.appData, 'sm64ex'),
+        path.join(ctx.appData, 'sm64pc'),
+        path.join(ctx.appData, 'Render96ex'),
+      ],
+    },
+    {
+      name: 'Dinosaur Planet: Recompiled',
+      searchTitle: 'Dinosaur Planet',
+      candidates: [
+        path.join(ctx.localAppData, 'DinoPlanetRecompiled', 'saves'),
+        path.join(ctx.localAppData, 'DinoPlanetRecompiled'),
+      ],
+    },
+    {
+      name: 'Goemon 64: Recompiled',
+      searchTitle: 'Mystical Ninja Starring Goemon',
+      candidates: [
+        path.join(ctx.localAppData, 'Goemon64Recomp', 'saves'),
+        path.join(ctx.localAppData, 'Goemon64Recomp'),
+      ],
+    },
+    {
+      name: 'Perfect Dark (PC Port)',
+      searchTitle: 'Perfect Dark',
+      candidates: [
+        path.join(ctx.localAppData, 'perfectdark'),
+        path.join(ctx.appData, 'perfectdark'),
+      ],
+    },
+    {
+      name: 'Jak and Daxter (OpenGOAL)',
+      searchTitle: 'Jak and Daxter: The Precursor Legacy',
+      candidates: [
+        path.join(ctx.appData, 'OpenGOAL', 'jak1', 'saves'),
+        path.join(ctx.appData, 'OpenGOAL', 'jak2', 'saves'),
+        path.join(ctx.xdgConfig, 'OpenGOAL', 'jak1', 'saves'),
+      ],
+    },
+  ]
+
+  for (const prof of pcRecompProfiles) {
+    const foundDir = prof.candidates.find((c) => fs.existsSync(c))
+    if (foundDir) {
+      pushUnique({
+        name: prof.name,
+        searchTitle: prof.searchTitle,
+        steamId: null,
+        localPath: foundDir,
+        ignoredPaths: [],
+        source: 'emuatlas',
+        emulatorName: 'Ports y Recompilaciones PC',
+        systemName: 'Port / Recomp PC',
+      })
     }
   }
 
@@ -3559,15 +3686,20 @@ async function scanInstalledGameSavesOnPc(): Promise<DetectedGameSaveItem[]> {
     if (matchedPaths.length > 0) {
       const computed = computeSyncRootAndIgnores(matchedPaths, forbiddenRootsSet)
       if (computed) {
+        const lowerNameAndPath = `${game.name} ${computed.localPath}`.toLowerCase()
+        const isRecompOrPort =
+          /recompiled|recomp|ship of harkinian|2ship2harkinian|opengoal|sm64ex|sm64pc|render96|spaghettikart|perfectdark|devilutionx/.test(
+            lowerNameAndPath
+          )
         rawDetected.push({
           name: game.name,
           searchTitle: game.name,
           steamId: game.steamId,
           localPath: computed.localPath,
           ignoredPaths: computed.ignoredPaths,
-          source: 'ludusavi',
-          emulatorName: null,
-          systemName: 'PC',
+          source: isRecompOrPort ? 'emuatlas' : 'ludusavi',
+          emulatorName: isRecompOrPort ? 'Ports y Recompilaciones PC' : null,
+          systemName: isRecompOrPort ? 'Port / Recomp PC' : 'PC',
         })
       }
     }
@@ -3584,7 +3716,22 @@ async function scanInstalledGameSavesOnPc(): Promise<DetectedGameSaveItem[]> {
     xdgConfig,
     docCandidates,
   })
-  rawDetected.push(...emuDetected)
+  const existingPaths = new Set(
+    rawDetected.map((r) => path.resolve(r.localPath).toLowerCase())
+  )
+  for (const emuItem of emuDetected) {
+    const normEmu = path.resolve(emuItem.localPath).toLowerCase()
+    if (
+      emuItem.emulatorName === 'Ports y Recompilaciones PC' &&
+      (existingPaths.has(normEmu) ||
+        Array.from(existingPaths).some(
+          (p) => p.startsWith(normEmu + path.sep) || normEmu.startsWith(p + path.sep)
+        ))
+    ) {
+      continue
+    }
+    rawDetected.push(emuItem)
+  }
 
   // Cargar caché local de carátulas de SteamGridDB
   const sgdbCachePath = path.join(app.getPath('userData'), 'steamgriddb-cache.json')

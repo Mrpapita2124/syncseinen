@@ -144,7 +144,7 @@ export const App: React.FC = () => {
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
   const [updateProgress, setUpdateProgress] = useState<UpdateProgressEvent | null>(null)
 
-  // Estados del menú sobrepuesto de Saves de Videojuegos (Ludusavi + EmuAtlas + EmuVault + SteamGridDB)
+  // Estados del menú sobrepuesto de Saves de Videojuegos (PC, Emuladores y SteamGridDB)
   const [isGameScannerOpen, setIsGameScannerOpen] = useState(false)
   const [gameScannerStep, setGameScannerStep] = useState<'select' | 'configure'>('select')
   const [scanningGames, setScanningGames] = useState(false)
@@ -412,7 +412,7 @@ export const App: React.FC = () => {
         'error',
         err instanceof Error
           ? err.message
-          : 'No se pudo escanear los saves de videojuegos con Ludusavi Manifest'
+          : 'No se pudo escanear los saves de videojuegos y emuladores'
       )
     } finally {
       setScanningGames(false)
@@ -1350,7 +1350,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Menú Sobrepuesto de Saves de Videojuegos (Estilo Pausa • Ludusavi + SteamGridDB) */}
+      {/* Menú Sobrepuesto de Saves de Videojuegos (Estilo Pausa • SteamGridDB) */}
       {isGameScannerOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
@@ -1382,7 +1382,7 @@ export const App: React.FC = () => {
                 <div>
                   <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] liquid-text-muted block">
                     {gameScannerStep === 'select'
-                      ? 'PASO 1 • ESCÁNER LUDUSAVI + EMUATLAS + EMUVAULT + STEAMGRIDDB'
+                      ? 'PASO 1 • ESCÁNER DE SAVES DE VIDEOJUEGOS Y EMULADORES'
                       : 'PASO 2 • SINCRONIZACIÓN POR JUEGO (SYNCSEINEN_GAMES_SAVES)'}
                   </span>
                   <h2 className="text-xl font-black tracking-tight liquid-text-primary">
@@ -1479,7 +1479,7 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Filtros por origen: Todos | Juegos de PC (Ludusavi) | Emuladores (EmuAtlas & EmuVault) */}
+                  {/* Filtros por origen: Todos | Juegos de PC | Emuladores y Ports PC */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
@@ -1505,7 +1505,7 @@ export const App: React.FC = () => {
                           : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
                       }`}
                     >
-                      PC &bull; Ludusavi ({pcDetectedCount})
+                      Juegos de PC ({pcDetectedCount})
                     </button>
                     <button
                       type="button"
@@ -1518,22 +1518,22 @@ export const App: React.FC = () => {
                           : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
                       }`}
                     >
-                      Emuladores &bull; EmuAtlas &amp; EmuVault ({emulatorDetectedCount})
+                      Emuladores y Ports PC ({emulatorDetectedCount})
                     </button>
                   </div>
                 </div>
 
-                {/* Cuerpo con cuadrícula de juegos detectados */}
+                {/* Cuerpo con secciones por emulador / PC y cuadrícula de juegos detectados */}
                 <div className="p-7 overflow-y-auto flex-1 min-h-[340px]">
                   {scanningGames ? (
                     <div className="h-72 flex flex-col items-center justify-center gap-3 text-center">
                       <Loader2 className="w-9 h-9 animate-spin text-sky-400" />
                       <div className="space-y-1">
                         <p className="text-sm font-extrabold liquid-text-primary">
-                          Escaneando saves de PC (Ludusavi) y Emuladores (EmuAtlas &amp; EmuVault)...
+                          Escaneando saves de videojuegos, emuladores y ports de PC...
                         </p>
                         <p className="text-xs liquid-text-muted">
-                          Buscando partidas guardadas en tu PC, perfiles de emuladores y carátulas de SteamGridDB.
+                          Buscando partidas guardadas en tu computadora y obteniendo carátulas desde SteamGridDB.
                         </p>
                       </div>
                     </div>
@@ -1551,101 +1551,176 @@ export const App: React.FC = () => {
                       </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {filteredDetectedGames.map((game) => {
-                        const isSelected = selectedGameIds.includes(game.id)
-                        const alreadySynced = metadatas.some(
-                          (m) =>
-                            Boolean(m.isGameSave) &&
-                            m.name.toLowerCase() === game.name.toLowerCase()
-                        )
-                        const isEmulatorSave =
-                          game.source === 'emuatlas' ||
-                          game.source === 'emuvault' ||
-                          Boolean(game.emulatorName)
+                    <div className="space-y-7">
+                      {(() => {
+                        const renderGameCard = (game: DetectedGameSaveItem) => {
+                          const isSelected = selectedGameIds.includes(game.id)
+                          const alreadySynced = metadatas.some(
+                            (m) =>
+                              Boolean(m.isGameSave) &&
+                              m.name.toLowerCase() === game.name.toLowerCase()
+                          )
+                          const isEmulatorSave =
+                            game.source === 'emuatlas' ||
+                            game.source === 'emuvault' ||
+                            Boolean(game.emulatorName)
 
-                        return (
-                          <div
-                            key={game.id}
-                            onClick={() => handleToggleGameSelect(game.id)}
-                            className={`rounded-2xl overflow-hidden cursor-pointer border transition flex flex-col justify-between group ${
-                              isSelected
-                                ? theme === 'flat-red'
-                                  ? 'bg-[#1a1416] border-2 border-red-500 shadow-lg shadow-red-600/20'
-                                  : 'liquid-glass-sub border-2 border-emerald-400 shadow-lg shadow-emerald-500/15'
-                                : 'liquid-glass-sub border-white/10 hover:border-white/30'
-                            }`}
-                          >
-                            {/* Carátula de SteamGridDB */}
-                            <div className="relative h-36 w-full overflow-hidden bg-gradient-to-br from-indigo-500/20 via-slate-900 to-emerald-500/20 border-b border-white/10">
-                              {game.thumbUrl || game.coverUrl ? (
-                                <img
-                                  src={game.thumbUrl || game.coverUrl || ''}
-                                  alt={game.name}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-sky-400/70">
-                                  <Gamepad2 className="w-8 h-8" />
-                                  <span className="text-[10px] liquid-text-muted">SteamGridDB</span>
-                                </div>
-                              )}
-
-                              {/* Etiqueta de Emulador / Origen arriba a la izquierda */}
-                              <div className="absolute top-2.5 left-2.5 flex items-center gap-1 max-w-[65%]">
-                                {isEmulatorSave ? (
-                                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-950/85 text-indigo-300 border border-indigo-400/50 backdrop-blur-md truncate">
-                                    {game.emulatorName || 'Emulador'}
-                                    {game.systemName ? ` • ${game.systemName}` : ''}
-                                  </span>
+                          return (
+                            <div
+                              key={game.id}
+                              onClick={() => handleToggleGameSelect(game.id)}
+                              className={`rounded-2xl overflow-hidden cursor-pointer border transition flex flex-col justify-between group ${
+                                isSelected
+                                  ? theme === 'flat-red'
+                                    ? 'bg-[#1a1416] border-2 border-red-500 shadow-lg shadow-red-600/20'
+                                    : 'liquid-glass-sub border-2 border-emerald-400 shadow-lg shadow-emerald-500/15'
+                                  : 'liquid-glass-sub border-white/10 hover:border-white/30'
+                              }`}
+                            >
+                              {/* Carátula de SteamGridDB */}
+                              <div className="relative h-36 w-full overflow-hidden bg-gradient-to-br from-indigo-500/20 via-slate-900 to-emerald-500/20 border-b border-white/10">
+                                {game.thumbUrl || game.coverUrl ? (
+                                  <img
+                                    src={game.thumbUrl || game.coverUrl || ''}
+                                    alt={game.name}
+                                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                  />
                                 ) : (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/70 text-emerald-300 border border-emerald-400/40 backdrop-blur-md truncate">
-                                    PC &bull; Ludusavi
-                                  </span>
+                                  <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-sky-400/70">
+                                    <Gamepad2 className="w-8 h-8" />
+                                    <span className="text-[10px] liquid-text-muted">SteamGridDB</span>
+                                  </div>
                                 )}
-                              </div>
 
-                              {/* Indicador de Selección arriba a la derecha */}
-                              <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
-                                {alreadySynced && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/70 text-sky-300 border border-sky-400/40 backdrop-blur-md">
-                                    Ya en tu nube
-                                  </span>
-                                )}
-                                <div
-                                  className={`w-7 h-7 rounded-xl flex items-center justify-center border transition ${
-                                    isSelected
-                                      ? theme === 'flat-red'
-                                        ? 'bg-red-600 border-red-400 text-white shadow'
-                                        : 'bg-emerald-500 border-emerald-300 text-slate-950 shadow'
-                                      : 'bg-black/60 border-white/30 text-white/70'
-                                  }`}
-                                >
-                                  <Check className="w-4 h-4 stroke-[3]" />
+                                {/* Etiqueta de Emulador / Origen arriba a la izquierda */}
+                                <div className="absolute top-2.5 left-2.5 flex items-center gap-1 max-w-[65%]">
+                                  {isEmulatorSave ? (
+                                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-950/85 text-indigo-300 border border-indigo-400/50 backdrop-blur-md truncate">
+                                      {game.emulatorName || 'Emulador'}
+                                      {game.systemName ? ` • ${game.systemName}` : ''}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/70 text-emerald-300 border border-emerald-400/40 backdrop-blur-md truncate">
+                                      PC
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Indicador de Selección arriba a la derecha */}
+                                <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                                  {alreadySynced && (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/70 text-sky-300 border border-sky-400/40 backdrop-blur-md">
+                                      Ya en tu nube
+                                    </span>
+                                  )}
+                                  <div
+                                    className={`w-7 h-7 rounded-xl flex items-center justify-center border transition ${
+                                      isSelected
+                                        ? theme === 'flat-red'
+                                          ? 'bg-red-600 border-red-400 text-white shadow'
+                                          : 'bg-emerald-500 border-emerald-300 text-slate-950 shadow'
+                                        : 'bg-black/60 border-white/30 text-white/70'
+                                    }`}
+                                  >
+                                    <Check className="w-4 h-4 stroke-[3]" />
+                                  </div>
+                                </div>
+
+                                {/* Nombre sobrepuesto abajo */}
+                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent p-3 pt-7">
+                                  <h4 className="text-sm font-extrabold text-white truncate drop-shadow">
+                                    {game.name}
+                                  </h4>
                                 </div>
                               </div>
 
-                              {/* Nombre sobrepuesto abajo */}
-                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent p-3 pt-7">
-                                <h4 className="text-sm font-extrabold text-white truncate drop-shadow">
-                                  {game.name}
-                                </h4>
+                              {/* Ruta local del save */}
+                              <div className="p-3 flex items-center gap-2 text-xs">
+                                <HardDrive className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                                <code
+                                  className="text-[11px] liquid-text-secondary font-mono truncate"
+                                  title={game.localPath}
+                                >
+                                  {game.localPath}
+                                </code>
                               </div>
                             </div>
+                          )
+                        }
 
-                            {/* Ruta local del save */}
-                            <div className="p-3 flex items-center gap-2 text-xs">
-                              <HardDrive className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                              <code
-                                className="text-[11px] liquid-text-secondary font-mono truncate"
-                                title={game.localPath}
-                              >
-                                {game.localPath}
-                              </code>
+                        if (gameScannerSourceFilter === 'all') {
+                          const sortedGames = [...filteredDetectedGames].sort((a, b) =>
+                            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+                          )
+                          return (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {sortedGames.map(renderGameCard)}
                             </div>
-                          </div>
-                        )
-                      })}
+                          )
+                        }
+
+                        const groupedMap = new Map<
+                          string,
+                          { label: string; isPc: boolean; items: DetectedGameSaveItem[] }
+                        >()
+                        for (const g of filteredDetectedGames) {
+                          const isEmu =
+                            g.source === 'emuatlas' ||
+                            g.source === 'emuvault' ||
+                            Boolean(g.emulatorName)
+                          const groupKey = isEmu
+                            ? (g.emulatorName || 'Emuladores').trim()
+                            : '__PC_GAMES__'
+                          const groupLabel = isEmu ? groupKey : 'Juegos de PC'
+                          if (!groupedMap.has(groupKey)) {
+                            groupedMap.set(groupKey, {
+                              label: groupLabel,
+                              isPc: !isEmu,
+                              items: [],
+                            })
+                          }
+                          groupedMap.get(groupKey)!.items.push(g)
+                        }
+
+                        const groups = Array.from(groupedMap.values()).sort((a, b) => {
+                          if (a.isPc !== b.isPc) return a.isPc ? 1 : -1
+                          return a.label.localeCompare(b.label)
+                        })
+
+                        return groups.map((group) => (
+                          <section key={group.label} className="space-y-3.5">
+                            {/* Encabezado limpio por emulador/categoría (igual que por servicio en el panel) */}
+                            <div className="flex items-center gap-3 px-1">
+                              <div className="flex items-center gap-2.5 flex-shrink-0">
+                                <div className="w-7 h-7 rounded-xl liquid-glass-sub flex items-center justify-center">
+                                  {group.isPc ? (
+                                    <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+                                  ) : (
+                                    <Gamepad2 className="w-3.5 h-3.5 text-indigo-400" />
+                                  )}
+                                </div>
+                                <h3 className="text-sm font-extrabold liquid-text-primary tracking-tight">
+                                  {group.label}
+                                </h3>
+                              </div>
+
+                              <div
+                                className={`flex-1 h-px ${
+                                  theme === 'flat-red' ? 'bg-zinc-800' : 'bg-white/15'
+                                }`}
+                              />
+
+                              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full liquid-glass-sub liquid-text-secondary flex-shrink-0">
+                                {group.items.length} juego(s)
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {group.items.map(renderGameCard)}
+                            </div>
+                          </section>
+                        ))
+                      })()}
                     </div>
                   )}
                 </div>
@@ -2002,8 +2077,8 @@ export const App: React.FC = () => {
                 <p className="text-xs liquid-text-muted mt-1">
                   {activeSection === 'games' ? (
                     <>
-                      Respaldo automático de partidas en{' '}
-                      <code className="text-sky-400 font-mono">SyncSeinen_games_saves</code> con Ludusavi, EmuAtlas, EmuVault y SteamGridDB.
+                      Respaldo automático de partidas de PC, emuladores y ports en{' '}
+                      <code className="text-sky-400 font-mono">SyncSeinen_games_saves</code> con carátulas de SteamGridDB.
                     </>
                   ) : (
                     <>
@@ -2126,9 +2201,8 @@ export const App: React.FC = () => {
                     Haz clic aquí para buscar Saves de Videojuegos y Emuladores en tu PC
                   </h3>
                   <p className="text-xs liquid-text-secondary leading-relaxed">
-                    Al pulsar en esta área se abrirá el menú de detección con el manifest de{' '}
-                    <strong>Ludusavi</strong>, perfiles de emuladores de <strong>EmuAtlas</strong> &amp;{' '}
-                    <strong>EmuVault</strong> y carátulas de <strong>SteamGridDB</strong> para que selecciones y sincronices tus partidas guardadas.
+                    Al pulsar en esta área se abrirá el menú de detección automática de partidas guardadas en videojuegos de PC, emuladores y ports/recompilaciones con carátulas de{' '}
+                    <strong>SteamGridDB</strong> para que selecciones y sincronices tus saves.
                   </p>
                 </div>
 
@@ -2158,7 +2232,7 @@ export const App: React.FC = () => {
                     <div className="flex items-center gap-3">
                       <Gamepad2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
                       <span className="text-xs font-bold liquid-text-primary">
-                        ¿Tienes más videojuegos o emuladores instalados? Haz clic aquí para escanear saves con Ludusavi, EmuAtlas, EmuVault y SteamGridDB.
+                        ¿Tienes más videojuegos, emuladores o ports instalados? Haz clic aquí para escanear saves automáticamente.
                       </span>
                     </div>
                     <span className="text-xs font-extrabold text-emerald-400 underline">
@@ -2974,7 +3048,7 @@ export const App: React.FC = () => {
       <CreateSyncModal
         isOpen={isCreateModalOpen}
         initialProvider={createModalProvider}
-        defaultIsGameSave={activeSection === 'games'}
+        defaultIsGameSave={false}
         connectedServices={connectedServices}
         onClose={() => setIsCreateModalOpen(false)}
         progress={progress}
