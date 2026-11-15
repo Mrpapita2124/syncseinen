@@ -43,7 +43,7 @@ jobs:
           rm -f /tmp/rclone.zip
 
       - name: Build AppImage
-        run: npm run build:linux
+        run: npm run build:linux -- --publish never
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
