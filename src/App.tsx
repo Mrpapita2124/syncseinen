@@ -137,7 +137,7 @@ export const App: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [activeSection, setActiveSection] = useState<'files' | 'games'>('files')
-  const [theme, setTheme] = useState<'liquid' | 'flat-red'>('liquid')
+  const [theme, setTheme] = useState<'liquid' | 'flat-red' | 'material'>('liquid')
   const [closeBehavior, setCloseBehavior] = useState<'tray' | 'quit'>('tray')
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null)
@@ -170,8 +170,10 @@ export const App: React.FC = () => {
   const isAuthenticated = activeProviders.length > 0
 
   useEffect(() => {
-    document.body.classList.remove('theme-light', 'theme-dark', 'theme-liquid', 'theme-flat-red')
-    document.body.classList.add(theme === 'flat-red' ? 'theme-flat-red' : 'theme-liquid')
+    document.body.classList.remove('theme-light', 'theme-dark', 'theme-liquid', 'theme-flat-red', 'theme-material')
+    document.body.classList.add(
+      theme === 'flat-red' ? 'theme-flat-red' : theme === 'material' ? 'theme-material' : 'theme-liquid'
+    )
   }, [theme])
 
   // Si el usuario desconecta todos los servicios, volver a la pantalla de inicio de sesión
@@ -252,7 +254,7 @@ export const App: React.FC = () => {
         setConfig(cfg)
         setDeviceNameInput(cfg.deviceName)
         if (cfg.viewMode) setViewMode(cfg.viewMode)
-        if (cfg.theme === 'flat-red' || cfg.theme === 'liquid') setTheme(cfg.theme)
+        if (cfg.theme === 'flat-red' || cfg.theme === 'liquid' || cfg.theme === 'material') setTheme(cfg.theme)
         if (cfg.closeBehavior === 'tray' || cfg.closeBehavior === 'quit') {
           setCloseBehavior(cfg.closeBehavior)
         }
@@ -289,7 +291,7 @@ export const App: React.FC = () => {
     setConfig(updated)
   }
 
-  const handleChangeTheme = async (nextTheme: 'liquid' | 'flat-red') => {
+  const handleChangeTheme = async (nextTheme: 'liquid' | 'flat-red' | 'material') => {
     setTheme(nextTheme)
     const updated = await window.syncApi.setPreferences({ theme: nextTheme })
     setConfig(updated)
@@ -1031,7 +1033,7 @@ export const App: React.FC = () => {
   return (
     <div
       className={`min-h-screen flex flex-col relative overflow-x-hidden ${
-        theme === 'flat-red' ? 'theme-flat-red' : 'theme-liquid'
+        theme === 'flat-red' ? 'theme-flat-red' : theme === 'material' ? 'theme-material' : 'theme-liquid'
       }`}
     >
       {/* Ambient Liquid Glass Light Orbs */}
@@ -1276,7 +1278,7 @@ export const App: React.FC = () => {
                   <p className="text-xs liquid-text-muted">
                     Selecciona el estilo visual de la aplicación:
                   </p>
-                  <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                     {/* Botón Tema 1: Cristal Líquido (degradado de azules y morados) */}
                     <button
                       type="button"
@@ -1322,6 +1324,29 @@ export const App: React.FC = () => {
                       <div className="flex items-center gap-1.5 text-xs font-extrabold">
                         <span>Negro y Rojo</span>
                         {theme === 'flat-red' && <Check className="w-3.5 h-3.5 text-red-500" />}
+                      </div>
+                    </button>
+
+                    {/* Botón Tema 3: Material Expressive (ciruela oscuro, lila y coral) */}
+                    <button
+                      type="button"
+                      onClick={() => handleChangeTheme('material')}
+                      className={`p-3 rounded-2xl flex flex-col items-center gap-2.5 border transition ${
+                        theme === 'material'
+                          ? 'bg-[#361940] border-[#cf9fff] text-[#f7ebff]'
+                          : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
+                      }`}
+                    >
+                      <div
+                        className="w-12 h-12 rounded-2xl border border-[#cf9fff]/50 flex flex-col items-center justify-center gap-1 p-1.5 flex-shrink-0"
+                        style={{ backgroundColor: '#24102b' }}
+                      >
+                        <div className="w-full h-3 rounded-full" style={{ backgroundColor: '#cf9fff' }} />
+                        <div className="w-3/4 h-2.5 rounded-full self-end" style={{ backgroundColor: '#ff9e9d' }} />
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs font-extrabold">
+                        <span>Material</span>
+                        {theme === 'material' && <Check className="w-3.5 h-3.5 text-[#cf9fff]" />}
                       </div>
                     </button>
                   </div>

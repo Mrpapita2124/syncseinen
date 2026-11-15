@@ -222,3 +222,148 @@ body.theme-flat-red {
 .theme-flat-red ::-webkit-scrollbar-thumb:hover {
   background: #dc2626;
 }
+
+/* Tema Material Expressive (inspirado en Material 3 Expressive: ciruela oscuro, lila y coral) */
+.theme-material {
+  --bg-base: #140919;
+  --text-primary: #f7ebff;
+  --text-secondary: #dcc6ea;
+  --text-muted: #a68bb8;
+  --glass-bg: #24102b;
+  --glass-bg-hover: #2f1638;
+  --glass-sub-bg: #1b0b21;
+  --glass-modal-bg: #24102b;
+  --glass-border: #4a2557;
+  --glass-border-strong: #cf9fff;
+  --glass-shadow: none;
+  --glass-sub-shadow: none;
+  --orb-1: transparent;
+  --orb-2: transparent;
+  --orb-3: transparent;
+}
+
+body.theme-material {
+  background-color: #140919;
+}
+
+.theme-material .liquid-glass,
+.theme-material .liquid-glass-card,
+.theme-material .liquid-glass-sub,
+.theme-material .liquid-glass-modal {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+.theme-material .liquid-glass,
+.theme-material .liquid-glass-card,
+.theme-material .liquid-glass-modal {
+  border-radius: 26px !important;
+}
+
+.theme-material .animate-orb-1,
+.theme-material .animate-orb-2 {
+  display: none !important;
+}
+
+/* Botones principales en forma de píldora lila (#cf9fff) con texto ciruela oscuro */
+.theme-material [class*="bg-gradient-to-r"] {
+  background-image: none !important;
+  background-color: #cf9fff !important;
+  color: #1d0826 !important;
+  border-radius: 9999px !important;
+  box-shadow: none !important;
+}
+
+.theme-material button[class*="bg-gradient-to-r"]:hover:not(:disabled) {
+  background-color: #dfbaff !important;
+}
+
+.theme-material [class*="bg-gradient-to-br"] {
+  background-image: none !important;
+  background-color: #2c1435 !important;
+}
+
+/* Acentos de texto e iconos en lila/coral Material Expressive */
+.theme-material .text-sky-400,
+.theme-material .text-sky-300,
+.theme-material .text-indigo-400,
+.theme-material .text-emerald-400,
+.theme-material .text-emerald-300 {
+  color: #cf9fff !important;
+}
+
+.theme-material .text-amber-400,
+.theme-material .text-amber-300,
+.theme-material .text-rose-400 {
+  color: #ff9e9d !important;
+}
+
+/* Botones secundarios en contenedor tonal ciruela con forma de píldora */
+.theme-material button.rounded-xl,
+.theme-material button.rounded-2xl {
+  border-radius: 9999px !important;
+}
+
+.theme-material .bg-sky-500\/20,
+.theme-material .bg-emerald-500\/20,
+.theme-material .bg-emerald-500\/15,
+.theme-material .bg-sky-500\/15,
+.theme-material .bg-indigo-500\/20,
+.theme-material .bg-indigo-500\/25 {
+  background-color: #361940 !important;
+  border-color: #6b3880 !important;
+  color: #f7ebff !important;
+  box-shadow: none !important;
+}
+
+.theme-material .bg-amber-500\/15,
+.theme-material .bg-amber-500\/20 {
+  background-color: #ff9e9d !important;
+  border-color: #ff9e9d !important;
+  color: #2b090e !important;
+  box-shadow: none !important;
+}
+
+.theme-material button.bg-sky-500\/20:hover:not(:disabled),
+.theme-material button.bg-emerald-500\/20:hover:not(:disabled),
+.theme-material button.bg-indigo-500\/20:hover:not(:disabled) {
+  background-color: #cf9fff !important;
+  border-color: #cf9fff !important;
+  color: #1d0826 !important;
+}
+
+.theme-material button.bg-amber-500\/15:hover:not(:disabled),
+.theme-material button.bg-amber-500\/20:hover:not(:disabled) {
+  background-color: #ffb8b7 !important;
+  color: #2b090e !important;
+}
+
+.theme-material .bg-emerald-500,
+.theme-material .bg-sky-500 {
+  background-color: #cf9fff !important;
+  color: #1d0826 !important;
+}
+
+.theme-material .bg-amber-500 {
+  background-color: #ff9e9d !important;
+  color: #2b090e !important;
+}
+
+.theme-material .border-sky-400\/40,
+.theme-material .border-sky-400\/30,
+.theme-material .border-emerald-400\/40,
+.theme-material .border-emerald-400\/30,
+.theme-material .border-emerald-400\/25,
+.theme-material .border-amber-400\/40,
+.theme-material .border-amber-400\/30 {
+  border-color: #5a2f6b !important;
+}
+
+.theme-material ::-webkit-scrollbar-thumb {
+  background: #532963;
+}
+
+.theme-material ::-webkit-scrollbar-thumb:hover {
+  background: #cf9fff;
+}

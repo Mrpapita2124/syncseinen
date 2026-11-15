@@ -32,12 +32,13 @@
 - 🎮 **Menú de Configuración Sobrepuesto (Estilo Pausa):**
   - Al pulsar el botón de **engrane** arriba a la derecha se despliega un menú sobrepuesto centrado sobre la pantalla:
     - **Servicios en la nube en vista de filas:** Conecta o desconecta cuentas de **Google Drive**, **Dropbox** y **OneDrive** en cualquier momento.
-    - **Selector visual de temas con muestras de color:** Botones dedicados que muestran los colores de cada tema (**Cristal Líquido** con degradado azul/morado y **Negro y Rojo** con cuadrado dividido diagonalmente en dos triángulos rectángulos negro y rojo).
+    - **Selector visual de temas con muestras de color:** Botones dedicados que muestran los colores de cada tema (**Cristal Líquido**, **Negro y Rojo** y **Material**).
     - **Comportamiento al cerrar la ventana:** Elige entre minimizarse a la bandeja del sistema o cerrarse por completo.
     - **Identificador de dispositivo:** Personaliza el nombre con el que esta PC registra cada **Push**.
-- 🎨 **Dos Temas Visuales (**`Cristal Líquido`** y **`Negro y Rojo Plano`**):**
+- 🎨 **Tres Temas Visuales (`Cristal Líquido`, `Negro y Rojo Plano` y `Material`):**
   - **Cristal Líquido:** Diseño translúcido con efectos de refracción y luces ambientales en tonos azules y morados.
   - **Negro y Rojo Plano:** Estética de colores sólidos planos en negro mate (`#09090b` / `#121215`) y acentos en rojo intenso (`#dc2626` / `#ef4444`).
+  - **Material:** Inspirado en *Material 3 Expressive*, con superficies tonales en ciruela oscuro (`#140919` / `#24102b`), botones tipo píldora en lila (`#cf9fff`) y acentos en coral (`#ff9e9d`).
 - 🌐 **Buscador Integrado de Imágenes Online (DuckDuckGo Images) + Subida Local:**
   - Al agregar o cambiar la carátula de cualquier sincronización, se abre un mini buscador de imágenes en internet mediante **DuckDuckGo Images**; basta con escribir el nombre para seleccionar una imagen al instante o pulsar **Subir foto local**.
   - La carátula se optimiza e incrusta dentro de `_SyncSeinen_Metadata` en la nube correspondiente, por lo que **todos tus dispositivos ven la misma portada automáticamente**.
@@ -57,7 +58,21 @@
 
 ---
 
-## 🆕 Novedades de la Versión 1.4.0
+## 🆕 Novedades de la Versión 1.4.2
+
+- **Nuevo Tema Visual `Material` (Material 3 Expressive):**
+  - Nuevo tema seleccionable desde el menú de configuración con paleta en ciruela oscuro (`#140919` / `#24102b`), botones en forma de píldora lila (`#cf9fff`), acentos coral (`#ff9e9d`), tarjetas con esquinas amplias (`26px`) y menú rápido de bandeja adaptado al tema.
+
+---
+
+## 🕓 Historial de Versiones Recientes
+
+### Versión 1.4.1
+- **Vista `Todos` en orden alfabético:** En el escáner de saves de videojuegos, la pestaña **Todos** muestra todos los saves sin dividir por secciones y ordenados alfabéticamente.
+- **Casilla `Marcar como Videojuego` mejorada:** Ubicada en la parte inferior izquierda del modal de nueva sincronización y desactivada por defecto.
+- **Compilación experimental para Linux (`AppImage`):** Flujo automatizado en GitHub Actions para generar `SyncSeinen-Linux.AppImage`.
+
+### Versión 1.4.0
 
 - **Apartado Dedicado de Saves de Videojuegos y Emuladores:**
   - Botón para cambiar entre **Archivos Normales** y **Saves de Juegos** junto a **+ Nueva Sincronización**, conservando la división por servicio y los modos de vista (**Cartas** y **Filas**).
@@ -70,10 +85,6 @@
 - **Auto-detección de Rutas en Otro Dispositivo y Prioridad de Pull Pendiente:**
   - Al iniciar sesión en otra computadora, **SyncSeinen** escanea automáticamente dónde guardar cada save de juego o emulador pendiente: si encuentra la ruta, muestra **Sincronizar automático (Pull)** + botón **Manual**; si no la encuentra, permite ingresarla o seleccionarla desde la PC.
   - Las sincronizaciones cuyo último `Push` fue realizado desde otro dispositivo se marcan como **Pendiente de Pull** y aparecen automáticamente al inicio (en cuadrícula) o hasta arriba (en filas).
-
----
-
-## 🕓 Historial de Versiones Recientes
 
 ### Versión 1.3.0
 - **Compatibilidad con Dropbox y Microsoft OneDrive (además de Google Drive):**

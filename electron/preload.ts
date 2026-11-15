@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld('syncApi', {
   setDeviceName: (name: string) => ipcRenderer.invoke('config:setDeviceName', name),
   setPreferences: (prefs: {
     viewMode?: 'grid' | 'list'
-    theme?: 'liquid' | 'flat-red'
+    theme?: 'liquid' | 'flat-red' | 'material'
     closeBehavior?: 'tray' | 'quit'
   }) => ipcRenderer.invoke('config:setPreferences', prefs),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),

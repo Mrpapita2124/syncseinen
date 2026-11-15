@@ -72,7 +72,7 @@ export interface AppConfig {
   connectedServices: Record<CloudProvider, boolean>
   rcloneVersion?: string
   appVersion?: string
-  theme?: 'liquid' | 'flat-red'
+  theme?: 'liquid' | 'flat-red' | 'material'
   closeBehavior?: 'tray' | 'quit'
   viewMode?: 'grid' | 'list'
   localMappings: Record<string, LocalSyncMapping>
@@ -4231,7 +4231,7 @@ function handleTrayMenuAction(action: string) {
   }
 }
 
-function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: string): string {
+function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red' | 'material', iconDataUrl: string): string {
   return `<!doctype html>
 <html lang="es">
 <head>
@@ -4272,6 +4272,13 @@ function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: str
     border: 1px solid #dc2626;
     color: #fafafa;
   }
+  /* Tema Material Expressive */
+  body.theme-material .menu-card {
+    background: #24102b;
+    border: 1px solid #4a2557;
+    border-radius: 22px;
+    color: #f7ebff;
+  }
   .header {
     display: flex;
     align-items: center;
@@ -4281,6 +4288,9 @@ function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: str
   }
   body.theme-flat-red .header {
     border-bottom: 1px solid #27272a;
+  }
+  body.theme-material .header {
+    border-bottom: 1px solid #4a2557;
   }
   .header img {
     width: 26px;
@@ -4299,6 +4309,9 @@ function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: str
   }
   body.theme-flat-red .header-sub {
     color: #a1a1aa;
+  }
+  body.theme-material .header-sub {
+    color: #b79bc9;
   }
   .items {
     display: flex;
@@ -4327,6 +4340,12 @@ function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: str
     border-color: #27272a;
     color: #f4f4f5;
   }
+  body.theme-material .item-btn {
+    background: #361940;
+    border-color: transparent;
+    border-radius: 999px;
+    color: #f7ebff;
+  }
   body.theme-liquid .item-btn:hover {
     background: rgba(56, 189, 248, 0.18);
     border-color: rgba(56, 189, 248, 0.4);
@@ -4336,6 +4355,11 @@ function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: str
     background: #dc2626;
     border-color: #ef4444;
     color: #ffffff;
+  }
+  body.theme-material .item-btn:hover {
+    background: #cf9fff;
+    border-color: #cf9fff;
+    color: #1d0826;
   }
   .dot {
     width: 7px;
@@ -4357,6 +4381,18 @@ function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: str
   body.theme-flat-red .item-btn:hover .dot {
     background: #ffffff;
   }
+  body.theme-material .dot-open { background: #cf9fff; }
+  body.theme-material .dot-push { background: #cf9fff; }
+  body.theme-material .dot-pull { background: #dfbaff; }
+  body.theme-material .dot-quit { background: #ff9e9d; }
+  body.theme-material .item-btn:hover .dot {
+    background: #1d0826;
+  }
+  body.theme-material .item-quit:hover {
+    background: #ff9e9d;
+    border-color: #ff9e9d;
+    color: #2b090e;
+  }
   .sep {
     height: 1px;
     background: rgba(255, 255, 255, 0.08);
@@ -4365,6 +4401,9 @@ function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: str
   body.theme-flat-red .sep {
     background: #27272a;
   }
+  body.theme-material .sep {
+    background: #4a2557;
+  }
   body.theme-liquid .item-quit:hover {
     background: rgba(244, 63, 94, 0.22);
     border-color: rgba(251, 113, 133, 0.45);
@@ -4372,7 +4411,7 @@ function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: str
   }
 </style>
 </head>
-<body class="${initialTheme === 'flat-red' ? 'theme-flat-red' : 'theme-liquid'}">
+<body class="${initialTheme === 'flat-red' ? 'theme-flat-red' : initialTheme === 'material' ? 'theme-material' : 'theme-liquid'}">
   <div class="menu-card">
     <div class="header">
       ${iconDataUrl ? `<img src="${iconDataUrl}" alt="SyncSeinen" />` : ''}
@@ -4408,7 +4447,7 @@ function buildTrayMenuHtml(initialTheme: 'liquid' | 'flat-red', iconDataUrl: str
       }
     }
     window.setTrayTheme = function(t) {
-      document.body.className = t === 'flat-red' ? 'theme-flat-red' : 'theme-liquid';
+      document.body.className = t === 'flat-red' ? 'theme-flat-red' : t === 'material' ? 'theme-material' : 'theme-liquid';
     };
   </script>
 </body>
@@ -4421,7 +4460,7 @@ function ensureTrayMenuWindow(): BrowserWindow {
   }
 
   const cfg = loadConfig()
-  const initialTheme = cfg.theme === 'flat-red' ? 'flat-red' : 'liquid'
+  const initialTheme = cfg.theme === 'flat-red' ? 'flat-red' : cfg.theme === 'material' ? 'material' : 'liquid'
   const iconDataUrl = getAppIconDataUrl()
 
   trayMenuWin = new BrowserWindow({
@@ -4457,7 +4496,7 @@ function ensureTrayMenuWindow(): BrowserWindow {
   return trayMenuWin
 }
 
-function updateTrayMenuWindowTheme(theme: 'liquid' | 'flat-red') {
+function updateTrayMenuWindowTheme(theme: 'liquid' | 'flat-red' | 'material') {
   if (trayMenuWin && !trayMenuWin.isDestroyed()) {
     trayMenuWin.webContents
       .executeJavaScript(`window.setTrayTheme && window.setTrayTheme(${JSON.stringify(theme)})`)
@@ -4468,7 +4507,7 @@ function updateTrayMenuWindowTheme(theme: 'liquid' | 'flat-red') {
 function showCustomTrayMenu() {
   const menuWin = ensureTrayMenuWindow()
   const cfg = loadConfig()
-  const currentTheme = cfg.theme === 'flat-red' ? 'flat-red' : 'liquid'
+  const currentTheme = cfg.theme === 'flat-red' ? 'flat-red' : cfg.theme === 'material' ? 'material' : 'liquid'
   updateTrayMenuWindowTheme(currentTheme)
 
   const cursor = screen.getCursorScreenPoint()
@@ -4625,7 +4664,7 @@ app.whenReady().then(() => {
       _e,
       prefs: {
         viewMode?: 'grid' | 'list'
-        theme?: 'liquid' | 'flat-red'
+        theme?: 'liquid' | 'flat-red' | 'material' | 'material'
         closeBehavior?: 'tray' | 'quit'
       }
     ) => {
