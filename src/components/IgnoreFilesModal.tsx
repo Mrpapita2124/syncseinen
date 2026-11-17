@@ -15,6 +15,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { useLang } from '../i18n'
 import { CloudProvider, FolderEntryItem } from '../types'
 
 const PROVIDER_LABELS: Record<CloudProvider, string> = {
@@ -44,9 +45,10 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
   onClose,
   onSave,
 }) => {
+  const [, , tr] = useLang()
   const providerLabel = PROVIDER_LABELS[provider] || 'Google Drive'
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ relPath: string; name: string }>>([
-    { relPath: '', name: 'Raíz de la sincronización' },
+    { relPath: '', name: tr('Sync root', 'Raíz de la sincronización') },
   ])
   const [entries, setEntries] = useState<FolderEntryItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -62,7 +64,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setSelectedIgnored(Array.from(new Set(initialIgnoredPaths || [])))
-      setBreadcrumbs([{ relPath: '', name: 'Raíz de la sincronización' }])
+      setBreadcrumbs([{ relPath: '', name: tr('Sync root', 'Raíz de la sincronización') }])
       setSearchFilter('')
       setCustomPattern('')
       setSourceMode(localPath ? 'local' : 'remote')
@@ -89,7 +91,11 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
           setEntries([])
         }
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Error al leer el contenido de la ruta')
+        setError(
+          err instanceof Error
+            ? err.message
+            : tr('Error reading folder contents', 'Error al leer el contenido de la ruta')
+        )
       } finally {
         setLoading(false)
       }
@@ -149,7 +155,11 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
       await onSave(selectedIgnored)
       onClose()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'No se pudieron guardar los archivos ignorados')
+      setError(
+        err instanceof Error
+          ? err.message
+          : tr('Could not save ignored files', 'No se pudieron guardar los archivos ignorados')
+      )
     } finally {
       setSaving(false)
     }
@@ -166,6 +176,32 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
     item.name.toLowerCase().includes(searchFilter.trim().toLowerCase())
   )
 
+  const handleSelectAllInPath = () => {
+    if (filteredEntries.length === 0) return
+    setSelectedIgnored((prev) => {
+      const next = [...prev]
+      for (const entry of filteredEntries) {
+        const coveredByParent = next.some(
+          (p) => entry.relPath !== p && entry.relPath.startsWith(`${p}/`)
+        )
+        if (coveredByParent || next.includes(entry.relPath)) continue
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].startsWith(`${entry.relPath}/`)) {
+            next.splice(i, 1)
+          }
+        }
+        next.push(entry.relPath)
+      }
+      return next
+    })
+  }
+
+  const handleUnselectAllInPath = () => {
+    if (filteredEntries.length === 0) return
+    const relSet = new Set(filteredEntries.map((e) => e.relPath))
+    setSelectedIgnored((prev) => prev.filter((p) => !relSet.has(p)))
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-md p-4">
       <div className="liquid-glass-modal rounded-3xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[88vh]">
@@ -177,10 +213,13 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold liquid-text-primary">
-                Ignorar Archivos y Carpetas — {title}
+                {tr('Ignore Files & Folders', 'Ignorar Archivos y Carpetas')} — {title}
               </h3>
               <p className="text-xs liquid-text-muted">
-                Selecciona rutas o archivos para que no se suban en Push ni se borren/sobrescriban en Pull
+                {tr(
+                  'Select paths or files to exclude from Push and protect from overwrite/delete on Pull',
+                  'Selecciona rutas o archivos para que no se suban en Push ni se borren/sobrescriban en Pull'
+                )}
               </p>
             </div>
           </div>
@@ -200,7 +239,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
                 type="button"
                 onClick={handleGoBack}
                 className="p-1.5 rounded-xl liquid-glass liquid-text-primary mr-1 flex-shrink-0"
-                title="Subir un nivel"
+                title={tr('Go up one level', 'Subir un nivel')}
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
               </button>
@@ -235,7 +274,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
                 }`}
               >
                 <HardDrive className="w-3.5 h-3.5" />
-                Carpeta Local
+                {tr('Local Folder', 'Carpeta Local')}
               </button>
               <button
                 type="button"
@@ -261,7 +300,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
               type="text"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Buscar en esta carpeta..."
+              placeholder={tr('Search in this folder...', 'Buscar en esta carpeta...')}
               className="w-full liquid-glass-sub rounded-xl pl-9 pr-3 py-1.5 text-xs liquid-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
             />
           </div>
@@ -271,7 +310,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
               type="text"
               value={customPattern}
               onChange={(e) => setCustomPattern(e.target.value)}
-              placeholder="Agregar ruta o comodín (ej. *.log, cache/temp)..."
+              placeholder={tr('Add path or wildcard (e.g. *.log, cache/temp)...', 'Agregar ruta o comodín (ej. *.log, cache/temp)...')}
               className="flex-1 liquid-glass-sub rounded-xl px-3 py-1.5 text-xs liquid-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400/50 font-mono"
             />
             <button
@@ -280,9 +319,37 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
               className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 disabled:opacity-40 text-amber-400 text-xs font-semibold flex items-center gap-1 transition flex-shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
-              Añadir
+              {tr('Add', 'Añadir')}
             </button>
           </form>
+        </div>
+
+        {/* Select all / Unselect all in current path */}
+        <div className="px-6 py-2 border-b border-white/10 flex items-center justify-between gap-2">
+          <span className="text-[11px] liquid-text-muted">
+            {tr(
+              `${filteredEntries.length} item(s) in this path`,
+              `${filteredEntries.length} elemento(s) en esta ruta`
+            )}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={loading || filteredEntries.length === 0}
+              onClick={handleSelectAllInPath}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 disabled:opacity-40 text-amber-300 text-[11px] font-semibold transition"
+            >
+              {tr('Select all', 'Marcar todos')}
+            </button>
+            <button
+              type="button"
+              disabled={loading || filteredEntries.length === 0}
+              onClick={handleUnselectAllInPath}
+              className="px-2.5 py-1 rounded-lg liquid-glass hover:opacity-90 disabled:opacity-40 liquid-text-secondary text-[11px] font-semibold transition"
+            >
+              {tr('Unselect all', 'Desmarcar todos')}
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -296,11 +363,16 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 liquid-text-muted gap-2">
               <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
-              <span className="text-xs">Cargando archivos y subcarpetas...</span>
+              <span className="text-xs">
+                {tr('Loading files and subfolders...', 'Cargando archivos y subcarpetas...')}
+              </span>
             </div>
           ) : filteredEntries.length === 0 ? (
             <div className="text-center py-12 liquid-text-muted text-xs">
-              No se encontraron archivos ni subcarpetas en esta ruta.
+              {tr(
+                'No files or subfolders found in this path.',
+                'No se encontraron archivos ni subcarpetas en esta ruta.'
+              )}
             </div>
           ) : (
             filteredEntries.map((entry) => {
@@ -329,10 +401,13 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
                       }`}
                       title={
                         parentIgnored
-                          ? `Ignorado porque la carpeta superior "${parentIgnored}" está ignorada`
+                          ? tr(
+                              `Ignored because parent folder "${parentIgnored}" is ignored`,
+                              `Ignorado porque la carpeta superior "${parentIgnored}" está ignorada`
+                            )
                           : exactIgnored
-                            ? 'Quitar de ignorados'
-                            : 'Marcar para ignorar'
+                            ? tr('Remove from ignored', 'Quitar de ignorados')
+                            : tr('Mark as ignored', 'Marcar para ignorar')
                       }
                     >
                       {effectivelyIgnored && <Check className="w-3.5 h-3.5 stroke-[3]" />}
@@ -376,11 +451,11 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
                   <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                     {parentIgnored ? (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-400/30 font-medium">
-                        Ignorado por /{parentIgnored}
+                        {tr(`Ignored by /${parentIgnored}`, `Ignorado por /${parentIgnored}`)}
                       </span>
                     ) : exactIgnored ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-400/40">
-                        Ignorado
+                        {tr('Ignored', 'Ignorado')}
                       </span>
                     ) : null}
 
@@ -391,7 +466,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
                         className="px-2.5 py-1 rounded-xl liquid-glass liquid-text-primary text-xs font-medium flex items-center gap-1 transition hover:opacity-90"
                       >
                         <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
-                        Abrir ruta
+                        {tr('Open folder', 'Abrir ruta')}
                       </button>
                     )}
                   </div>
@@ -405,7 +480,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
         <div className="px-6 py-3 liquid-glass-sub border-x-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold liquid-text-primary">
-              Rutas y archivos ignorados ({selectedIgnored.length}):
+              {tr('Ignored paths & files', 'Rutas y archivos ignorados')} ({selectedIgnored.length}):
             </span>
             {selectedIgnored.length > 0 && (
               <button
@@ -414,14 +489,17 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
                 className="text-[11px] text-rose-400 hover:underline flex items-center gap-1 font-medium"
               >
                 <Trash2 className="w-3 h-3" />
-                Limpiar todos
+                {tr('Clear all', 'Limpiar todos')}
               </button>
             )}
           </div>
 
           {selectedIgnored.length === 0 ? (
             <p className="text-xs liquid-text-muted italic">
-              Ningún archivo o carpeta ignorado. Se sincronizará todo el contenido.
+              {tr(
+                'No ignored files or folders. Everything will be synced.',
+                'Ningún archivo o carpeta ignorado. Se sincronizará todo el contenido.'
+              )}
             </p>
           ) : (
             <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto py-1">
@@ -448,7 +526,10 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-4 flex items-center justify-between gap-4">
           <p className="text-[11px] liquid-text-muted leading-relaxed">
-            Al hacer <strong>Push</strong> no se subirán estos archivos, y al hacer <strong>Pull</strong> se ignorará su existencia (no se borrarán ni modificarán en tu computadora).
+            {tr(
+              'Excluded files will not be uploaded on Push and will be left untouched on Pull.',
+              'Al hacer Push no se subirán estos archivos, y al hacer Pull se ignorará su existencia (no se borrarán ni modificarán en tu computadora).'
+            )}
           </p>
           <div className="flex items-center gap-2.5 flex-shrink-0">
             <button
@@ -456,7 +537,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 rounded-xl liquid-glass liquid-text-secondary text-xs font-medium transition hover:opacity-90"
             >
-              Cancelar
+              {tr('Cancel', 'Cancelar')}
             </button>
             <button
               type="button"
@@ -469,7 +550,7 @@ export const IgnoreFilesModal: React.FC<IgnoreFilesModalProps> = ({
               ) : (
                 <Check className="w-4 h-4 stroke-[2.5]" />
               )}
-              Guardar Ignorados ({selectedIgnored.length})
+              {tr('Save Ignored', 'Guardar Ignorados')} ({selectedIgnored.length})
             </button>
           </div>
         </div>

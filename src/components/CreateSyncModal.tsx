@@ -16,6 +16,7 @@ import {
 import { DriveFolderModal } from './DriveFolderModal'
 import { IgnoreFilesModal } from './IgnoreFilesModal'
 import { CoverPickerModal } from './CoverPickerModal'
+import { useLang } from '../i18n'
 import { CloudProvider, SyncProgressEvent } from '../types'
 
 const PROVIDER_LABELS: Record<CloudProvider, string> = {
@@ -54,6 +55,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
   isCreating,
   onCreated,
 }) => {
+  const [, , tr] = useLang()
   const [provider, setProvider] = useState<CloudProvider>(initialProvider)
   const [name, setName] = useState('')
   const [driveFolder, setDriveFolder] = useState<{ path: string; name: string } | null>(null)
@@ -144,8 +146,11 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
     if (!name.trim() || !localPath || (!isGameSave && !driveFolder)) {
       setError(
         isGameSave
-          ? 'Completa el nombre y la carpeta de tu computadora.'
-          : `Completa el nombre, la carpeta de tu computadora y la carpeta en ${providerLabel}.`
+          ? tr('Enter a name and select a local folder.', 'Completa el nombre y la carpeta de tu computadora.')
+          : tr(
+              `Enter a name, local folder, and ${providerLabel} folder.`,
+              `Completa el nombre, la carpeta de tu computadora y la carpeta en ${providerLabel}.`
+            )
       )
       return
     }
@@ -186,7 +191,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
             <div className="flex items-center gap-2.5">
               <PlusCircle className="w-5 h-5 text-sky-400" />
               <h3 className="text-lg font-bold liquid-text-primary">
-                Crear Nueva Sincronización ({providerLabel})
+                {tr(`Create New Sync (${providerLabel})`, `Crear Nueva Sincronización (${providerLabel})`)}
               </h3>
             </div>
             <button
@@ -194,8 +199,11 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
               onClick={onClose}
               title={
                 isCreating
-                  ? 'Ocultar ventana (la subida continuará en segundo plano con la barra normal)'
-                  : 'Cerrar'
+                  ? tr(
+                      'Hide window (upload will continue in the background)',
+                      'Ocultar ventana (la subida continuará en segundo plano con la barra normal)'
+                    )
+                  : tr('Close', 'Cerrar')
               }
               className="liquid-text-muted hover:liquid-text-primary p-1.5 rounded-xl hover:bg-white/10 transition"
             >
@@ -211,7 +219,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   <div className="flex items-center gap-2 min-w-0">
                     <Loader2 className="w-4 h-4 animate-spin text-sky-400 flex-shrink-0" />
                     <span className="font-semibold liquid-text-primary truncate">
-                      {progress ? `${progress.phase}` : 'Iniciando subida de archivos con rclone...'}
+                      {progress ? `${progress.phase}` : tr('Starting file upload with rclone...', 'Iniciando subida de archivos con rclone...')}
                     </span>
                   </div>
                   <span className="text-sky-400 font-mono font-bold flex-shrink-0 ml-2">
@@ -232,7 +240,10 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   />
                 </div>
                 <p className="text-[11px] liquid-text-muted mt-0.5">
-                  Puedes cerrar este cuadro con la <strong>X</strong> de arriba y la subida continuará en la barra general.
+                  {tr(
+                    'You can close this dialog with the X above and the upload will continue in the main bar.',
+                    'Puedes cerrar este cuadro con la X de arriba y la subida continuará en la barra general.'
+                  )}
                 </p>
               </div>
             </div>
@@ -243,7 +254,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
             {availableProviders.length > 1 && (
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
-                  Servicio en la Nube Destino
+                  {tr('Target Cloud Service', 'Servicio en la Nube Destino')}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['gdrive', 'dropbox', 'onedrive'] as CloudProvider[]).map((p) => {
@@ -280,7 +291,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
             {/* Carátula / Cover Image Selector */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-2">
-                Carátula de la Sincronización (Opcional • Se guarda en la metadata)
+                {tr('Sync Cover Image (Optional • Stored in metadata)', 'Carátula de la Sincronización (Opcional • Se guarda en la metadata)')}
               </label>
               <div className="flex items-center gap-4">
                 <div
@@ -301,14 +312,17 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   ) : (
                     <div className="flex flex-col items-center justify-center text-sky-400/80 gap-1">
                       <ImagePlus className="w-5 h-5" />
-                      <span className="text-[10px] font-medium">Elegir imagen</span>
+                      <span className="text-[10px] font-medium">{tr('Choose image', 'Elegir imagen')}</span>
                     </div>
                   )}
                 </div>
 
                 <div className="flex-1 space-y-1.5">
                   <p className="text-xs liquid-text-secondary leading-relaxed">
-                    Escoge una imagen representativa (juego, proyecto, carpeta). Se adjunta directamente a la metadata en {providerLabel} para que se vea en todos tus dispositivos.
+                    {tr(
+                      `Pick a representative image (game, project, folder). Attached directly to ${providerLabel} metadata so it appears on all your devices.`,
+                      `Escoge una imagen representativa (juego, proyecto, carpeta). Se adjunta directamente a la metadata en ${providerLabel} para que se vea en todos tus dispositivos.`
+                    )}
                   </p>
                   <div className="flex items-center gap-2">
                     <button
@@ -318,7 +332,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                       className="px-3 py-1.5 rounded-xl liquid-glass text-xs font-semibold text-sky-400 hover:opacity-90 flex items-center gap-1.5 transition"
                     >
                       <ImagePlus className="w-3.5 h-3.5" />
-                      {coverImage ? 'Cambiar carátula' : 'Subir carátula'}
+                      {coverImage ? tr('Change cover', 'Cambiar carátula') : tr('Upload cover', 'Subir carátula')}
                     </button>
                     {coverImage && (
                       <button
@@ -328,7 +342,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                         className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 text-xs font-medium flex items-center gap-1 transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        Quitar
+                        {tr('Remove', 'Quitar')}
                       </button>
                     )}
                   </div>
@@ -338,28 +352,28 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
-                1. Nombre de la Sincronización
+                {tr('1. Sync Name', '1. Nombre de la Sincronización')}
               </label>
               <input
                 type="text"
                 disabled={isCreating}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ej. Programación Web, Partidas Guardadas, Proyectos..."
+                placeholder={tr('e.g. Web Project, Save Games, Documents...', 'Ej. Programación Web, Partidas Guardadas, Proyectos...')}
                 className="w-full liquid-glass-sub rounded-xl px-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50 disabled:opacity-60"
               />
             </div>
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
-                2. Carpeta en esta Computadora (Origen Local)
+                {tr('2. Local Folder (This Computer)', '2. Carpeta en esta Computadora (Origen Local)')}
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   readOnly
                   value={localPath}
-                  placeholder="Selecciona una carpeta de tu PC..."
+                  placeholder={tr('Select a folder from your PC...', 'Selecciona una carpeta de tu PC...')}
                   className="flex-1 liquid-glass-sub rounded-xl px-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 font-mono"
                 />
                 <button
@@ -369,7 +383,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   className="px-4 py-2.5 rounded-xl liquid-glass hover:opacity-90 disabled:opacity-50 liquid-text-primary text-sm font-semibold flex items-center gap-2 transition flex-shrink-0"
                 >
                   <HardDrive className="w-4 h-4 text-emerald-400" />
-                  Explorar PC
+                  {tr('Browse PC', 'Explorar PC')}
                 </button>
               </div>
 
@@ -379,8 +393,8 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                     <EyeOff className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
                     <span>
                       {ignoredPaths.length === 0
-                        ? 'Sin archivos ni rutas ignoradas'
-                        : `${ignoredPaths.length} ruta(s)/archivo(s) ignorado(s)`}
+                        ? tr('No ignored files or paths', 'Sin archivos ni rutas ignoradas')
+                        : tr(`${ignoredPaths.length} ignored path(s)/file(s)`, `${ignoredPaths.length} ruta(s)/archivo(s) ignorado(s)`)}
                     </span>
                   </div>
                   <button
@@ -389,7 +403,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                     onClick={() => setIsIgnoreModalOpen(true)}
                     className="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-400 text-xs font-semibold transition flex-shrink-0"
                   >
-                    Seleccionar qué ignorar
+                    {tr('Select files to ignore', 'Seleccionar qué ignorar')}
                   </button>
                 </div>
               )}
@@ -397,10 +411,10 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
-                3. Carpeta en {providerLabel}{' '}
+                {tr(`3. Folder in ${providerLabel}`, `3. Carpeta en ${providerLabel}`)}{' '}
                 {isGameSave
-                  ? '(Automática para videojuegos)'
-                  : '(Destino donde rclone guardará los archivos)'}
+                  ? tr('(Automatic for games)', '(Automática para videojuegos)')
+                  : tr('(Destination where rclone will store files)', '(Destino donde rclone guardará los archivos)')}
               </label>
 
               {isGameSave ? (
@@ -411,9 +425,10 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                       /{autoGameDrivePath}
                     </div>
                     <p className="text-xs liquid-text-muted mt-0.5">
-                      Los saves de videojuegos siempre se guardan automáticamente en{' '}
-                      <code className="text-emerald-300 font-mono">SyncSeinen_games_saves</code>{' '}
-                      con el nombre de la sincronización.
+                      {tr(
+                        'Game saves are always stored automatically in SyncSeinen_games_saves using the sync name.',
+                        'Los saves de videojuegos siempre se guardan automáticamente en SyncSeinen_games_saves con el nombre de la sincronización.'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -424,7 +439,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                       type="text"
                       readOnly
                       value={driveFolder ? `/${driveFolder.path}` : ''}
-                      placeholder={`Selecciona o crea una carpeta en tu ${providerLabel}...`}
+                      placeholder={tr(`Select or create a folder in ${providerLabel}...`, `Selecciona o crea una carpeta en tu ${providerLabel}...`)}
                       className="flex-1 liquid-glass-sub rounded-xl px-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 font-mono"
                     />
                     <button
@@ -434,18 +449,17 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                       className="px-4 py-2.5 rounded-xl liquid-glass hover:opacity-90 disabled:opacity-50 liquid-text-primary text-sm font-semibold flex items-center gap-2 transition flex-shrink-0"
                     >
                       <Cloud className="w-4 h-4 text-sky-400" />
-                      Elegir en {providerLabel}
+                      {tr(`Choose in ${providerLabel}`, `Elegir en ${providerLabel}`)}
                     </button>
                   </div>
 
-                  {/* Opción rápida para crear y añadir automáticamente una subcarpeta con el nombre de la carpeta de la PC */}
                   {localFolderName && (
                     <div className="mt-2.5 liquid-glass-sub rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 border border-emerald-400/25">
                       {driveEndsWithLocalName ? (
                         <div className="flex items-center gap-2 text-xs text-emerald-300 font-medium">
                           <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                           <span>
-                            Subcarpeta automática lista en {providerLabel}:{' '}
+                            {tr(`Auto subfolder ready in ${providerLabel}:`, `Subcarpeta automática lista en ${providerLabel}:`)}{' '}
                             <code className="font-mono font-bold text-emerald-300">
                               /{driveFolder?.path}
                             </code>
@@ -454,9 +468,10 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                       ) : (
                         <>
                           <div className="text-xs liquid-text-secondary flex-1 min-w-[200px]">
-                            ¿Guardar dentro de una carpeta llamada{' '}
-                            <strong className="text-emerald-300">«{localFolderName}»</strong> en{' '}
-                            {driveFolder ? `/${driveFolder.path}` : `Raíz (${providerLabel})`}?
+                            {tr('Save inside a folder named ', '¿Guardar dentro de una carpeta llamada ')}
+                            <strong className="text-emerald-300">«{localFolderName}»</strong>{' '}
+                            {tr('in', 'en')}{' '}
+                            {driveFolder ? `/${driveFolder.path}` : `${tr('Root', 'Raíz')} (${providerLabel})`}?
                           </div>
                           <button
                             type="button"
@@ -469,7 +484,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                             ) : (
                               <FolderPlus className="w-3.5 h-3.5" />
                             )}
-                            Crear «/{driveFolder ? `${driveFolder.path}/${localFolderName}` : localFolderName}»
+                            {tr('Create', 'Crear')} «/{driveFolder ? `${driveFolder.path}/${localFolderName}` : localFolderName}»
                           </button>
                         </>
                       )}
@@ -477,7 +492,10 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   )}
 
                   <p className="text-xs liquid-text-muted mt-2 leading-relaxed">
-                    Los archivos se sincronizarán vía <strong>rclone</strong> en la carpeta elegida, mientras que en <code className="text-sky-400 font-mono">_SyncSeinen_Metadata</code> se guardará la metadata y la carátula.
+                    {tr(
+                      'Files will sync via rclone into the chosen folder, while metadata and cover are stored in _SyncSeinen_Metadata.',
+                      'Los archivos se sincronizarán vía rclone en la carpeta elegida, mientras que en _SyncSeinen_Metadata se guardará la metadata y la carátula.'
+                    )}
                   </p>
                 </>
               )}
@@ -498,7 +516,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   onChange={(e) => setIsGameSave(e.target.checked)}
                   className="w-4 h-4 rounded accent-emerald-500 cursor-pointer flex-shrink-0"
                 />
-                <span>Marcar como Videojuego</span>
+                <span>{tr('Mark as Game', 'Marcar como Videojuego')}</span>
               </label>
 
               <div className="flex items-center gap-3 ml-auto">
@@ -507,7 +525,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   onClick={onClose}
                   className="px-4 py-2.5 rounded-xl liquid-glass liquid-text-secondary text-sm font-medium transition hover:opacity-90"
                 >
-                  {isCreating ? 'Minimizar a barra superior' : 'Cancelar'}
+                  {isCreating ? tr('Minimize to top bar', 'Minimizar a barra superior') : tr('Cancel', 'Cancelar')}
                 </button>
                 <button
                   type="submit"
@@ -523,12 +541,12 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                   {isCreating ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Subiendo con rclone...
+                      {tr('Uploading with rclone...', 'Subiendo con rclone...')}
                     </>
                   ) : (
                     <>
                       <FolderOpen className="w-4 h-4" />
-                      Crear Sincronización y Hacer Push
+                      {tr('Create Sync & Push', 'Crear Sincronización y Hacer Push')}
                     </>
                   )}
                 </button>

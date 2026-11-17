@@ -45,6 +45,7 @@ import { CreateSyncModal } from './components/CreateSyncModal'
 import { IgnoreFilesModal } from './components/IgnoreFilesModal'
 import { UpdateModal } from './components/UpdateModal'
 import { CoverPickerModal } from './components/CoverPickerModal'
+import { useLang } from './i18n'
 
 const ALL_PROVIDERS: CloudProvider[] = ['gdrive', 'dropbox', 'onedrive']
 
@@ -114,6 +115,7 @@ const ProviderIcon: React.FC<{ provider: CloudProvider; className?: string }> = 
 }
 
 export const App: React.FC = () => {
+  const [lang, setLang, tr] = useLang()
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [metadatas, setMetadatas] = useState<SyncMetadata[]>([])
   const [loadingInit, setLoadingInit] = useState(true)
@@ -824,15 +826,21 @@ export const App: React.FC = () => {
                     {isConn ? (
                       <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        Sesión iniciada
+                        {tr('Signed in', 'Sesión iniciada')}
                       </span>
                     ) : (
                       <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-white/5 liquid-text-muted border border-white/10">
-                        Sin vincular
+                        {tr('Not linked', 'Sin vincular')}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs liquid-text-muted mt-0.5">{info.shortDesc}</p>
+                  <p className="text-xs liquid-text-muted mt-0.5">
+                    {provider === 'gdrive'
+                      ? tr('Direct sync with your Google Drive', 'Sincronización directa con tu unidad de Google Drive')
+                      : provider === 'dropbox'
+                        ? tr('Fast sync with your Dropbox folders', 'Sincronización rápida con tus carpetas de Dropbox')
+                        : tr('Sync with your Microsoft OneDrive cloud', 'Sincronización con tu nube de Microsoft OneDrive')}
+                  </p>
                 </div>
               </div>
 
@@ -842,7 +850,7 @@ export const App: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <div className="py-2 px-3 rounded-xl liquid-glass text-sky-400 font-semibold text-xs flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-                      <span>Autoriza en el navegador...</span>
+                      <span>{tr('Authorize in browser...', 'Autoriza en el navegador...')}</span>
                     </div>
                     <button
                       type="button"
@@ -850,24 +858,24 @@ export const App: React.FC = () => {
                       className="py-2 px-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition"
                     >
                       <XCircle className="w-3.5 h-3.5" />
-                      Cancelar
+                      {tr('Cancel', 'Cancelar')}
                     </button>
                   </div>
                 ) : isConn ? (
                   <div className="flex items-center gap-2">
                     <div className="py-2 px-3.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-bold flex items-center gap-1.5">
                       <Check className="w-3.5 h-3.5" />
-                      Conectado
+                      {tr('Connected', 'Conectado')}
                     </div>
                     <button
                       type="button"
                       disabled={Boolean(loggingInProvider) || Boolean(busyAction)}
                       onClick={() => handleLogoutProvider(provider)}
-                      title={`Cerrar sesión de ${info.label}`}
+                      title={tr(`Sign out of ${info.label}`, `Cerrar sesión de ${info.label}`)}
                       className="px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 border border-rose-400/30 text-rose-400 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-40"
                     >
                       <LogOut className="w-3.5 h-3.5" />
-                      Cerrar sesión
+                      {tr('Sign out', 'Cerrar sesión')}
                     </button>
                   </div>
                 ) : (
@@ -882,7 +890,7 @@ export const App: React.FC = () => {
                     }`}
                   >
                     <ShieldCheck className="w-4 h-4" />
-                    Iniciar sesión
+                    {tr('Sign in', 'Iniciar sesión')}
                   </button>
                 )}
               </div>
@@ -928,16 +936,22 @@ export const App: React.FC = () => {
                   {isConn ? (
                     <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                      Sesión iniciada
+                      {tr('Signed in', 'Sesión iniciada')}
                     </span>
                   ) : (
                     <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-white/5 liquid-text-muted border border-white/10">
-                      Sin vincular
+                      {tr('Not linked', 'Sin vincular')}
                     </span>
                   )}
                 </div>
 
-                <p className="text-xs liquid-text-secondary leading-relaxed">{info.shortDesc}</p>
+                <p className="text-xs liquid-text-secondary leading-relaxed">
+                  {provider === 'gdrive'
+                    ? tr('Direct sync with your Google Drive', 'Sincronización directa con tu unidad de Google Drive')
+                    : provider === 'dropbox'
+                      ? tr('Fast sync with your Dropbox folders', 'Sincronización rápida con tus carpetas de Dropbox')
+                      : tr('Sync with your Microsoft OneDrive cloud', 'Sincronización con tu nube de Microsoft OneDrive')}
+                </p>
               </div>
 
               <div>
@@ -945,7 +959,7 @@ export const App: React.FC = () => {
                   <div className="space-y-2">
                     <div className="w-full py-2 px-3 rounded-xl liquid-glass text-sky-400 font-semibold text-xs flex items-center justify-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-                      <span>Autoriza en el navegador...</span>
+                      <span>{tr('Authorize in browser...', 'Autoriza en el navegador...')}</span>
                     </div>
                     <button
                       type="button"
@@ -953,20 +967,20 @@ export const App: React.FC = () => {
                       className="w-full py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 text-rose-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition"
                     >
                       <XCircle className="w-3.5 h-3.5" />
-                      Cancelar
+                      {tr('Cancel', 'Cancelar')}
                     </button>
                   </div>
                 ) : isConn ? (
                   <div className="flex items-center gap-2">
                     <div className="flex-1 py-2 px-3 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-bold flex items-center justify-center gap-1.5">
                       <Check className="w-3.5 h-3.5" />
-                      Conectado
+                      {tr('Connected', 'Conectado')}
                     </div>
                     <button
                       type="button"
                       disabled={Boolean(loggingInProvider) || Boolean(busyAction)}
                       onClick={() => handleLogoutProvider(provider)}
-                      title={`Cerrar sesión de ${info.label}`}
+                      title={tr(`Sign out of ${info.label}`, `Cerrar sesión de ${info.label}`)}
                       className="p-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 border border-rose-400/30 text-rose-400 transition disabled:opacity-40"
                     >
                       <LogOut className="w-4 h-4" />
@@ -984,7 +998,7 @@ export const App: React.FC = () => {
                     }`}
                   >
                     <ShieldCheck className="w-4 h-4" />
-                    Iniciar sesión en {info.label}
+                    {tr(`Sign in to ${info.label}`, `Iniciar sesión en ${info.label}`)}
                   </button>
                 )}
               </div>
@@ -999,7 +1013,9 @@ export const App: React.FC = () => {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center liquid-text-primary gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-sky-400" />
-        <p className="text-sm font-medium">Iniciando SyncSeinen y verificando motor rclone...</p>
+        <p className="text-sm font-medium">
+          {tr('Starting SyncSeinen and checking rclone engine...', 'Iniciando SyncSeinen y verificando motor rclone...')}
+        </p>
       </div>
     )
   }
@@ -1068,7 +1084,10 @@ export const App: React.FC = () => {
                 </h1>
               </div>
               <p className="text-xs liquid-text-muted">
-                Sincronización multi-nube (Google Drive, Dropbox y OneDrive) &bull; Motor Rclone
+                {tr(
+                  'Multi-cloud sync (Google Drive, Dropbox & OneDrive) • Rclone Engine',
+                  'Sincronización multi-nube (Google Drive, Dropbox y OneDrive) • Motor Rclone'
+                )}
               </p>
             </div>
           </div>
@@ -1080,17 +1099,17 @@ export const App: React.FC = () => {
                 type="button"
                 onClick={() => setIsUpdateModalOpen(true)}
                 className="px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-emerald-500/25 via-sky-500/25 to-indigo-500/25 hover:from-emerald-500/40 hover:to-indigo-500/40 border border-emerald-400/50 flex items-center gap-2 text-xs font-extrabold text-emerald-300 shadow-lg shadow-emerald-500/15 transition animate-pulse"
-                title="Haz clic para ver qué cambia e instalar la nueva versión"
+                title={tr('Click to see release notes and install update', 'Haz clic para ver qué cambia e instalar la nueva versión')}
               >
                 <Rocket className="w-4 h-4 text-emerald-400" />
-                <span>¡Nueva versión v{updateInfo.latestVersion}!</span>
+                <span>{tr(`New version v${updateInfo.latestVersion}!`, `¡Nueva versión v${updateInfo.latestVersion}!`)}</span>
               </button>
             )}
 
             {/* Device Name */}
             <div className="flex items-center gap-2 liquid-glass-sub rounded-2xl px-3.5 py-1.5">
               <Laptop className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs liquid-text-muted">Dispositivo:</span>
+              <span className="text-xs liquid-text-muted">{tr('Device:', 'Dispositivo:')}</span>
               {editingDevice ? (
                 <div className="flex items-center gap-1.5">
                   <input
@@ -1110,7 +1129,7 @@ export const App: React.FC = () => {
                 <button
                   onClick={() => setEditingDevice(true)}
                   className="text-xs font-bold text-emerald-400 hover:underline"
-                  title="Haz clic para cambiar el nombre de este dispositivo"
+                  title={tr('Click to rename this device', 'Haz clic para cambiar el nombre de este dispositivo')}
                 >
                   {config?.deviceName}
                 </button>
@@ -1122,12 +1141,14 @@ export const App: React.FC = () => {
                 type="button"
                 onClick={() => setIsSettingsMenuOpen(true)}
                 className="flex items-center gap-2 liquid-glass-sub rounded-2xl px-3.5 py-1.5 hover:opacity-90 transition"
-                title="Abrir menú para gestionar servicios conectados"
+                title={tr('Open menu to manage connected services', 'Abrir menú para gestionar servicios conectados')}
               >
                 <Cloud className="w-4 h-4 text-sky-400" />
                 <span className="text-xs liquid-text-primary font-semibold">
                   {activeProviders.length}{' '}
-                  {activeProviders.length === 1 ? 'Servicio Activo' : 'Servicios Activos'}
+                  {activeProviders.length === 1
+                    ? tr('Active Service', 'Servicio Activo')
+                    : tr('Active Services', 'Servicios Activos')}
                 </span>
               </button>
             )}
@@ -1136,7 +1157,7 @@ export const App: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsSettingsMenuOpen(true)}
-              title="Abrir Menú de Configuración"
+              title={tr('Open Settings Menu', 'Abrir Menú de Configuración')}
               className="w-10 h-10 rounded-2xl liquid-glass-sub hover:bg-white/10 flex items-center justify-center liquid-text-primary transition"
             >
               <Settings
@@ -1178,10 +1199,10 @@ export const App: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] liquid-text-muted block">
-                    MENÚ DEL SISTEMA
+                    {tr('SYSTEM MENU', 'MENÚ DEL SISTEMA')}
                   </span>
                   <h2 className="text-xl font-black tracking-tight liquid-text-primary">
-                    Configuración y Servicios en la Nube
+                    {tr('Settings & Cloud Services', 'Configuración y Servicios en la Nube')}
                   </h2>
                 </div>
               </div>
@@ -1192,7 +1213,7 @@ export const App: React.FC = () => {
                 className="px-4 py-2 rounded-2xl liquid-glass-sub hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition"
               >
                 <X className="w-4 h-4" />
-                Reanudar
+                {tr('Resume', 'Reanudar')}
               </button>
             </div>
 
@@ -1203,14 +1224,17 @@ export const App: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-extrabold uppercase tracking-wider liquid-text-primary">
-                      1. Servicios en la Nube Vinculados
+                      {tr('1. Linked Cloud Services', '1. Servicios en la Nube Vinculados')}
                     </h3>
                     <p className="text-xs liquid-text-muted mt-0.5">
-                      Inicia sesión o desconecta tus cuentas de Google Drive, Dropbox y OneDrive.
+                      {tr(
+                        'Sign in or disconnect your Google Drive, Dropbox, and OneDrive accounts.',
+                        'Inicia sesión o desconecta tus cuentas de Google Drive, Dropbox y OneDrive.'
+                      )}
                     </p>
                   </div>
                   <span className="text-xs font-bold px-3 py-1 rounded-full liquid-glass-sub liquid-text-secondary">
-                    {activeProviders.length} de 3 activos
+                    {tr(`${activeProviders.length} of 3 active`, `${activeProviders.length} de 3 activos`)}
                   </span>
                 </div>
 
@@ -1228,10 +1252,13 @@ export const App: React.FC = () => {
                 {/* Opción: Al cerrar la aplicación */}
                 <div className="space-y-2.5">
                   <span className="block text-xs font-extrabold uppercase tracking-wider liquid-text-primary">
-                    2. Al cerrar la aplicación
+                    {tr('2. When closing the app', '2. Al cerrar la aplicación')}
                   </span>
                   <p className="text-xs liquid-text-muted">
-                    Elige si SyncSeinen permanece activo en segundo plano o se cierra por completo.
+                    {tr(
+                      'Choose whether SyncSeinen stays running in the background or quits completely.',
+                      'Elige si SyncSeinen permanece activo en segundo plano o se cierra por completo.'
+                    )}
                   </p>
                   <div className="space-y-2 pt-1">
                     <button
@@ -1247,7 +1274,7 @@ export const App: React.FC = () => {
                             : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
                       }`}
                     >
-                      <span>Quedarse en segundo plano (Bandeja)</span>
+                      <span>{tr('Keep in background (Tray)', 'Quedarse en segundo plano (Bandeja)')}</span>
                       {closeBehavior === 'tray' && <Check className="w-4 h-4" />}
                     </button>
 
@@ -1264,7 +1291,7 @@ export const App: React.FC = () => {
                             : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
                       }`}
                     >
-                      <span>Cerrarse por completo</span>
+                      <span>{tr('Quit completely', 'Cerrarse por completo')}</span>
                       {closeBehavior === 'quit' && <Check className="w-4 h-4" />}
                     </button>
                   </div>
@@ -1273,13 +1300,13 @@ export const App: React.FC = () => {
                 {/* Opción: Selector de Temas como Botones con Muestra Visual de Colores */}
                 <div className="space-y-2.5">
                   <span className="block text-xs font-extrabold uppercase tracking-wider liquid-text-primary">
-                    3. Tema visual
+                    {tr('3. Visual theme', '3. Tema visual')}
                   </span>
                   <p className="text-xs liquid-text-muted">
-                    Selecciona el estilo visual de la aplicación:
+                    {tr('Select the app visual style:', 'Selecciona el estilo visual de la aplicación:')}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                    {/* Botón Tema 1: Cristal Líquido (degradado de azules y morados) */}
+                    {/* Botón Tema 1: Cristal Líquido */}
                     <button
                       type="button"
                       onClick={() => handleChangeTheme('liquid')}
@@ -1299,12 +1326,12 @@ export const App: React.FC = () => {
                         }}
                       />
                       <div className="flex items-center gap-1.5 text-xs font-extrabold">
-                        <span>Cristal Líquido</span>
+                        <span>{tr('Liquid Glass', 'Cristal Líquido')}</span>
                         {theme === 'liquid' && <Check className="w-3.5 h-3.5 text-sky-400" />}
                       </div>
                     </button>
 
-                    {/* Botón Tema 2: Negro y Rojo (cuadrado partido en dos triángulos rectángulos: negro y rojo) */}
+                    {/* Botón Tema 2: Negro y Rojo */}
                     <button
                       type="button"
                       onClick={() => handleChangeTheme('flat-red')}
@@ -1322,12 +1349,12 @@ export const App: React.FC = () => {
                         }}
                       />
                       <div className="flex items-center gap-1.5 text-xs font-extrabold">
-                        <span>Negro y Rojo</span>
+                        <span>{tr('Black & Red', 'Negro y Rojo')}</span>
                         {theme === 'flat-red' && <Check className="w-3.5 h-3.5 text-red-500" />}
                       </div>
                     </button>
 
-                    {/* Botón Tema 3: Material Expressive (ciruela oscuro, lila y coral) */}
+                    {/* Botón Tema 3: Material Expressive */}
                     <button
                       type="button"
                       onClick={() => handleChangeTheme('material')}
@@ -1352,12 +1379,62 @@ export const App: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              <div
+                className={`border-t ${
+                  theme === 'flat-red' ? 'border-zinc-800' : 'border-white/10'
+                }`}
+              />
+
+              {/* Sección 4: Idioma / Language */}
+              <div className="space-y-2.5">
+                <span className="block text-xs font-extrabold uppercase tracking-wider liquid-text-primary">
+                  {tr('4. Language / Idioma', '4. Idioma / Language')}
+                </span>
+                <p className="text-xs liquid-text-muted">
+                  {tr('Choose the display language for SyncSeinen:', 'Elige el idioma de la interfaz de SyncSeinen:')}
+                </p>
+                <div className="grid grid-cols-2 gap-3 pt-1 max-w-sm">
+                  <button
+                    type="button"
+                    onClick={() => setLang('en')}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
+                      lang === 'en'
+                        ? theme === 'flat-red'
+                          ? 'bg-red-600 text-white border border-red-500'
+                          : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
+                        : theme === 'flat-red'
+                          ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
+                          : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
+                    }`}
+                  >
+                    <span>English</span>
+                    {lang === 'en' && <Check className="w-4 h-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLang('es')}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
+                      lang === 'es'
+                        ? theme === 'flat-red'
+                          ? 'bg-red-600 text-white border border-red-500'
+                          : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
+                        : theme === 'flat-red'
+                          ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
+                          : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
+                    }`}
+                  >
+                    <span>Español</span>
+                    {lang === 'es' && <Check className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Footer del Menú de Pausa */}
             <div className="px-7 py-4 border-t border-white/15 flex items-center justify-between">
               <span className="text-xs liquid-text-muted font-mono">
-                {config?.rcloneVersion || 'Motor Rclone activo'}
+                {config?.rcloneVersion || tr('Rclone engine active', 'Motor Rclone activo')}
               </span>
               <button
                 type="button"
@@ -1368,7 +1445,7 @@ export const App: React.FC = () => {
                     : 'bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:to-emerald-400 text-white'
                 }`}
               >
-                Volver a SyncSeinen
+                {tr('Back to SyncSeinen', 'Volver a SyncSeinen')}
               </button>
             </div>
           </div>
@@ -1407,13 +1484,22 @@ export const App: React.FC = () => {
                 <div>
                   <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] liquid-text-muted block">
                     {gameScannerStep === 'select'
-                      ? 'PASO 1 • ESCÁNER DE SAVES DE VIDEOJUEGOS Y EMULADORES'
-                      : 'PASO 2 • SINCRONIZACIÓN POR JUEGO (SYNCSEINEN_GAMES_SAVES)'}
+                      ? tr(
+                          'STEP 1 • GAME & EMULATOR SAVE SCANNER',
+                          'PASO 1 • ESCÁNER DE SAVES DE VIDEOJUEGOS Y EMULADORES'
+                        )
+                      : tr(
+                          'STEP 2 • PER-GAME SYNC (SYNCSEINEN_GAMES_SAVES)',
+                          'PASO 2 • SINCRONIZACIÓN POR JUEGO (SYNCSEINEN_GAMES_SAVES)'
+                        )}
                   </span>
                   <h2 className="text-xl font-black tracking-tight liquid-text-primary">
                     {gameScannerStep === 'select'
-                      ? 'Saves de Videojuegos y Emuladores Encontrados en tu PC'
-                      : 'Sincronizar Videojuegos Seleccionados'}
+                      ? tr(
+                          'Game & Emulator Saves Found on Your PC',
+                          'Saves de Videojuegos y Emuladores Encontrados en tu PC'
+                        )
+                      : tr('Sync Selected Games', 'Sincronizar Videojuegos Seleccionados')}
                   </h2>
                 </div>
               </div>
@@ -1427,7 +1513,7 @@ export const App: React.FC = () => {
                     className="px-3.5 py-2 rounded-2xl liquid-glass-sub hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${scanningGames ? 'animate-spin text-sky-400' : ''}`} />
-                    Reescanear PC
+                    {tr('Rescan PC', 'Reescanear PC')}
                   </button>
                 )}
 
@@ -1439,7 +1525,7 @@ export const App: React.FC = () => {
                     className="px-3.5 py-2 rounded-2xl liquid-glass-sub hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
-                    Volver a selección
+                    {tr('Back to selection', 'Volver a selección')}
                   </button>
                 )}
 
@@ -1450,7 +1536,7 @@ export const App: React.FC = () => {
                   className="px-4 py-2 rounded-2xl liquid-glass-sub hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
                 >
                   <X className="w-4 h-4" />
-                  Cerrar
+                  {tr('Close', 'Cerrar')}
                 </button>
               </div>
             </div>
@@ -1467,15 +1553,17 @@ export const App: React.FC = () => {
                         type="text"
                         value={gameSearchQuery}
                         onChange={(e) => setGameSearchQuery(e.target.value)}
-                        placeholder="Buscar por nombre del juego, emulador, consola o ruta..."
+                        placeholder={tr('Search by game name, emulator, console or path...', 'Buscar por nombre del juego, emulador, consola o ruta...')}
                         className="w-full liquid-glass-sub rounded-2xl pl-10 pr-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
                       />
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-bold px-3 py-1.5 rounded-xl liquid-glass-sub liquid-text-secondary">
-                        {filteredDetectedGames.length} encontrado(s) &bull;{' '}
-                        <strong className="text-emerald-400">{selectedGameIds.length} seleccionado(s)</strong>
+                        {filteredDetectedGames.length} {tr('found', 'encontrado(s)')} &bull;{' '}
+                        <strong className="text-emerald-400">
+                          {selectedGameIds.length} {tr('selected', 'seleccionado(s)')}
+                        </strong>
                       </span>
 
                       {filteredDetectedGames.length > 0 && (
@@ -1497,14 +1585,14 @@ export const App: React.FC = () => {
                           className="px-3 py-2 rounded-xl liquid-glass-sub hover:bg-white/10 text-xs font-semibold liquid-text-primary transition"
                         >
                           {filteredDetectedGames.every((g) => selectedGameIds.includes(g.id))
-                            ? 'Deseleccionar visibles'
-                            : 'Seleccionar visibles'}
+                            ? tr('Unselect visible', 'Deseleccionar visibles')
+                            : tr('Select visible', 'Seleccionar visibles')}
                         </button>
                       )}
                     </div>
                   </div>
 
-                  {/* Filtros por origen: Todos | Juegos de PC | Emuladores y Ports PC */}
+                  {/* Filtros por origen */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
@@ -1517,7 +1605,7 @@ export const App: React.FC = () => {
                           : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
                       }`}
                     >
-                      Todos ({detectedGames.length})
+                      {tr('All', 'Todos')} ({detectedGames.length})
                     </button>
                     <button
                       type="button"
@@ -1530,7 +1618,7 @@ export const App: React.FC = () => {
                           : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
                       }`}
                     >
-                      Juegos de PC ({pcDetectedCount})
+                      {tr('PC Games', 'Juegos de PC')} ({pcDetectedCount})
                     </button>
                     <button
                       type="button"
@@ -1543,7 +1631,7 @@ export const App: React.FC = () => {
                           : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
                       }`}
                     >
-                      Emuladores y Ports PC ({emulatorDetectedCount})
+                      {tr('Emulators & PC Ports', 'Emuladores y Ports PC')} ({emulatorDetectedCount})
                     </button>
                   </div>
                 </div>
@@ -1555,10 +1643,13 @@ export const App: React.FC = () => {
                       <Loader2 className="w-9 h-9 animate-spin text-sky-400" />
                       <div className="space-y-1">
                         <p className="text-sm font-extrabold liquid-text-primary">
-                          Escaneando saves de videojuegos, emuladores y ports de PC...
+                          {tr('Scanning game, emulator and PC port saves...', 'Escaneando saves de videojuegos, emuladores y ports de PC...')}
                         </p>
                         <p className="text-xs liquid-text-muted">
-                          Buscando partidas guardadas en tu computadora y obteniendo carátulas desde SteamGridDB.
+                          {tr(
+                            'Searching for save files on your computer and fetching SteamGridDB covers.',
+                            'Buscando partidas guardadas en tu computadora y obteniendo carátulas desde SteamGridDB.'
+                          )}
                         </p>
                       </div>
                     </div>
@@ -1567,12 +1658,16 @@ export const App: React.FC = () => {
                       <Gamepad2 className="w-10 h-10 liquid-text-muted" />
                       <p className="text-sm font-bold liquid-text-primary">
                         {detectedGames.length === 0
-                          ? 'No se detectaron saves de videojuegos ni emuladores automáticamente en esta PC.'
-                          : `No hay resultados para el filtro actual${gameSearchQuery ? ` ("${gameSearchQuery}")` : ''}.`}
+                          ? tr('No game or emulator saves were automatically detected on this PC.', 'No se detectaron saves de videojuegos ni emuladores automáticamente en esta PC.')
+                          : tr(
+                              `No results for current filter${gameSearchQuery ? ` ("${gameSearchQuery}")` : ''}.`,
+                              `No hay resultados para el filtro actual${gameSearchQuery ? ` ("${gameSearchQuery}")` : ''}.`
+                            )}
                       </p>
                       <p className="text-xs liquid-text-muted max-w-md">
-                        También puedes agregar cualquier juego manualmente usando el botón{' '}
-                        <strong>+ Nueva Sincronización</strong> y activando la casilla de videojuego.
+                        {tr('You can also add any game manually using ', 'También puedes agregar cualquier juego manualmente usando el botón ')}
+                        <strong>+ {tr('New Sync', 'Nueva Sincronización')}</strong>
+                        {tr(' and checking Mark as Game.', ' y activando la casilla de videojuego.')}
                       </p>
                     </div>
                   ) : (
@@ -1635,7 +1730,7 @@ export const App: React.FC = () => {
                                 <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
                                   {alreadySynced && (
                                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/70 text-sky-300 border border-sky-400/40 backdrop-blur-md">
-                                      Ya en tu nube
+                                      {tr('Already in cloud', 'Ya en tu nube')}
                                     </span>
                                   )}
                                   <div
@@ -1694,9 +1789,9 @@ export const App: React.FC = () => {
                             g.source === 'emuvault' ||
                             Boolean(g.emulatorName)
                           const groupKey = isEmu
-                            ? (g.emulatorName || 'Emuladores').trim()
+                            ? (g.emulatorName || tr('Emulators', 'Emuladores')).trim()
                             : '__PC_GAMES__'
-                          const groupLabel = isEmu ? groupKey : 'Juegos de PC'
+                          const groupLabel = isEmu ? groupKey : tr('PC Games', 'Juegos de PC')
                           if (!groupedMap.has(groupKey)) {
                             groupedMap.set(groupKey, {
                               label: groupLabel,
@@ -1736,7 +1831,7 @@ export const App: React.FC = () => {
                               />
 
                               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full liquid-glass-sub liquid-text-secondary flex-shrink-0">
-                                {group.items.length} juego(s)
+                                {group.items.length} {tr('game(s)', 'juego(s)')}
                               </span>
                             </div>
 
@@ -1753,8 +1848,8 @@ export const App: React.FC = () => {
                 {/* Footer Paso 1 */}
                 <div className="px-7 py-4 border-t border-white/15 flex items-center justify-between gap-4">
                   <span className="text-xs liquid-text-muted">
-                    Selecciona los videojuegos cuyos saves quieras respaldar y presiona{' '}
-                    <strong>Continuar</strong>.
+                    {tr('Select the games whose saves you want to back up and press ', 'Selecciona los videojuegos cuyos saves quieras respaldar y presiona ')}
+                    <strong>{tr('Continue', 'Continuar')}</strong>.
                   </span>
 
                   <div className="flex items-center gap-3">
@@ -1763,7 +1858,7 @@ export const App: React.FC = () => {
                       onClick={() => setIsGameScannerOpen(false)}
                       className="px-4 py-2.5 rounded-2xl liquid-glass-sub liquid-text-secondary text-xs font-bold hover:opacity-90 transition"
                     >
-                      Cancelar
+                      {tr('Cancel', 'Cancelar')}
                     </button>
 
                     <button
@@ -1776,7 +1871,7 @@ export const App: React.FC = () => {
                           : 'bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-500 hover:from-emerald-400 hover:to-indigo-400 text-white'
                       }`}
                     >
-                      <span>Continuar ({selectedGameIds.length})</span>
+                      <span>{tr('Continue', 'Continuar')} ({selectedGameIds.length})</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
@@ -1816,9 +1911,10 @@ export const App: React.FC = () => {
 
                 <div className="p-7 overflow-y-auto flex-1 space-y-3 min-h-[340px]">
                   <p className="text-xs liquid-text-secondary mb-2">
-                    Elige el servicio en el menú desplegable de cada fila y presiona{' '}
-                    <strong>Finalizar y sincronizar ({selectedGameObjects.length})</strong> abajo para comenzar a respaldar tus partidas en{' '}
-                    <code className="text-sky-400 font-mono font-bold">/SyncSeinen_games_saves/&lt;Juego&gt;</code>.
+                    {tr('Choose the cloud service in each row dropdown and press ', 'Elige el servicio en el menú desplegable de cada fila y presiona ')}
+                    <strong>{tr('Finish & sync', 'Finalizar y sincronizar')} ({selectedGameObjects.length})</strong>{' '}
+                    {tr('below to start backing up your saves in ', 'abajo para comenzar a respaldar tus partidas en ')}
+                    <code className="text-sky-400 font-mono font-bold">/SyncSeinen_games_saves/&lt;{tr('Game', 'Juego')}&gt;</code>.
                   </p>
 
                   {selectedGameObjects.map((game) => {
@@ -1874,13 +1970,13 @@ export const App: React.FC = () => {
                               {isThisSyncing && (
                                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/40 flex items-center gap-1">
                                   <Loader2 className="w-3 h-3 animate-spin text-sky-400" />
-                                  Sincronizando...
+                                  {tr('Syncing...', 'Sincronizando...')}
                                 </span>
                               )}
                               {!isThisSyncing && syncedProv && (
                                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                  Sincronizado en {PROVIDER_META[syncedProv].label}
+                                  {tr(`Synced to ${PROVIDER_META[syncedProv].label}`, `Sincronizado en ${PROVIDER_META[syncedProv].label}`)}
                                 </span>
                               )}
                             </div>
@@ -1936,7 +2032,7 @@ export const App: React.FC = () => {
                     className="px-4 py-2.5 rounded-2xl liquid-glass-sub liquid-text-primary text-xs font-bold flex items-center gap-1.5 hover:opacity-90 transition disabled:opacity-40"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    Elegir más juegos
+                    {tr('Pick more games', 'Elegir más juegos')}
                   </button>
 
                   <button
@@ -1956,12 +2052,12 @@ export const App: React.FC = () => {
                     {Boolean(syncingGameId) || busyAction === 'game-sync-batch' ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Sincronizando juegos seleccionados...</span>
+                        <span>{tr('Syncing selected games...', 'Sincronizando juegos seleccionados...')}</span>
                       </>
                     ) : (
                       <>
                         <ArrowUpFromLine className="w-4 h-4" />
-                        <span>Finalizar y sincronizar ({selectedGameObjects.length})</span>
+                        <span>{tr('Finish & sync', 'Finalizar y sincronizar')} ({selectedGameObjects.length})</span>
                       </>
                     )}
                   </button>
@@ -2027,7 +2123,7 @@ export const App: React.FC = () => {
               onClick={() => setStatusMessage(null)}
               className="text-xs liquid-text-muted hover:liquid-text-primary underline"
             >
-              Cerrar
+              {tr('Close', 'Cerrar')}
             </button>
           </div>
         </div>
@@ -2044,19 +2140,21 @@ export const App: React.FC = () => {
 
             <div className="max-w-2xl mx-auto">
               <h2 className="text-2xl font-extrabold liquid-text-primary">
-                Conecta tus servicios en la nube
+                {tr('Connect your cloud services', 'Conecta tus servicios en la nube')}
               </h2>
               <p className="text-sm liquid-text-secondary mt-2 leading-relaxed">
-                Inicia sesión con <strong>Google Drive</strong>, <strong>Dropbox</strong> o{' '}
-                <strong>OneDrive</strong>. Cada servicio en el que inicies sesión se marcará como{' '}
-                <span className="text-emerald-400 font-semibold">Sesión iniciada</span> para que puedas
-                vincular varios a la vez antes de pasar a la vista de sincronizaciones.
+                {tr('Sign in with ', 'Inicia sesión con ')}
+                <strong>Google Drive</strong>, <strong>Dropbox</strong> {tr('or', 'o')}{' '}
+                <strong>OneDrive</strong>.{' '}
+                {tr('Each service you sign in to will be marked as ', 'Cada servicio en el que inicies sesión se marcará como ')}
+                <span className="text-emerald-400 font-semibold">{tr('Signed in', 'Sesión iniciada')}</span>{' '}
+                {tr('so you can link multiple accounts before continuing to your syncs.', 'para que puedas vincular varios a la vez antes de pasar a la vista de sincronizaciones.')}
               </p>
             </div>
 
             {renderOnboardingServiceCards()}
 
-            {/* Botón para ir a la vista de sincronizaciones (habilitado al tener al menos 1 servicio vinculado) */}
+            {/* Botón para ir a la vista de sincronizaciones */}
             <div className="pt-4 border-t border-white/10 flex flex-col items-center gap-2">
               <button
                 type="button"
@@ -2070,13 +2168,19 @@ export const App: React.FC = () => {
                     : 'liquid-glass-sub liquid-text-muted opacity-50 cursor-not-allowed'
                 }`}
               >
-                <span>Ir a la vista de sincronizaciones</span>
+                <span>{tr('Go to syncs', 'Ir a la vista de sincronizaciones')}</span>
                 <ArrowRight className="w-5 h-5" />
               </button>
               <span className="text-xs liquid-text-muted">
                 {isAuthenticated
-                  ? `Tienes ${activeProviders.length} servicio(s) vinculado(s). También podrás agregar más después desde el engrane de configuración.`
-                  : 'Vincula al menos un servicio arriba para habilitar el acceso a tus sincronizaciones.'}
+                  ? tr(
+                      `You have ${activeProviders.length} linked service(s). You can also add more later from the settings gear.`,
+                      `Tienes ${activeProviders.length} servicio(s) vinculado(s). También podrás agregar más después desde el engrane de configuración.`
+                    )
+                  : tr(
+                      'Link at least one service above to access your syncs.',
+                      'Vincula al menos un servicio arriba para habilitar el acceso a tus sincronizaciones.'
+                    )}
               </span>
             </div>
           </div>
@@ -2090,32 +2194,32 @@ export const App: React.FC = () => {
                   {activeSection === 'games' ? (
                     <>
                       <Gamepad2 className="w-5 h-5 text-emerald-400" />
-                      <span>Saves de Videojuegos por Servicio</span>
+                      <span>{tr('Game Saves by Service', 'Saves de Videojuegos por Servicio')}</span>
                     </>
                   ) : (
-                    <span>Archivos Normales por Servicio</span>
+                    <span>{tr('Regular Files by Service', 'Archivos Normales por Servicio')}</span>
                   )}
                   <span className="text-xs px-3 py-0.5 rounded-full liquid-glass-sub liquid-text-secondary font-semibold">
-                    {activeProviders.length} servicio(s) activo(s) &bull; {sectionMetadatas.length} sync(s)
+                    {activeProviders.length} {tr('active service(s)', 'servicio(s) activo(s)')} &bull; {sectionMetadatas.length} {tr('sync(s)', 'sync(s)')}
                   </span>
                 </h2>
                 <p className="text-xs liquid-text-muted mt-1">
                   {activeSection === 'games' ? (
                     <>
-                      Respaldo automático de partidas de PC, emuladores y ports en{' '}
-                      <code className="text-sky-400 font-mono">SyncSeinen_games_saves</code> con carátulas de SteamGridDB.
+                      {tr('Automatic backup of PC, emulator and port saves in ', 'Respaldo automático de partidas de PC, emuladores y ports en ')}
+                      <code className="text-sky-400 font-mono">SyncSeinen_games_saves</code>{' '}
+                      {tr('with SteamGridDB covers.', 'con carátulas de SteamGridDB.')}
                     </>
                   ) : (
                     <>
-                      Cada servicio tiene sus propios botones de <strong>Pull</strong> y{' '}
-                      <strong>Push</strong>. Puedes agregar más cuentas desde el botón de engrane.
+                      {tr('Each service has its own Pull and Push buttons. You can add more accounts from the gear menu.', 'Cada servicio tiene sus propios botones de Pull y Push. Puedes agregar más cuentas desde el botón de engrane.')}
                     </>
                   )}
                 </p>
               </div>
 
               <div className="flex items-center gap-2.5 flex-wrap">
-                {/* View Mode Toggle: Cuadrícula (Grid) vs Fila (List) */}
+                {/* View Mode Toggle: Grid vs List */}
                 <div className="flex items-center liquid-glass-sub rounded-2xl p-1">
                   <button
                     type="button"
@@ -2125,10 +2229,10 @@ export const App: React.FC = () => {
                         ? 'bg-gradient-to-r from-sky-500 to-indigo-500 text-white shadow-md'
                         : 'liquid-text-muted hover:liquid-text-primary'
                     }`}
-                    title="Vista en cuadrícula de cartas"
+                    title={tr('Card grid view', 'Vista en cuadrícula de cartas')}
                   >
                     <LayoutGrid className="w-3.5 h-3.5" />
-                    Cartas
+                    {tr('Cards', 'Cartas')}
                   </button>
                   <button
                     type="button"
@@ -2138,10 +2242,10 @@ export const App: React.FC = () => {
                         ? 'bg-gradient-to-r from-sky-500 to-indigo-500 text-white shadow-md'
                         : 'liquid-text-muted hover:liquid-text-primary'
                     }`}
-                    title="Vista en filas"
+                    title={tr('List row view', 'Vista en filas')}
                   >
                     <List className="w-3.5 h-3.5" />
-                    Filas
+                    {tr('Rows', 'Filas')}
                   </button>
                 </div>
 
@@ -2149,13 +2253,12 @@ export const App: React.FC = () => {
                   onClick={() => refreshMetadatas()}
                   disabled={loadingSyncs || Boolean(busyAction)}
                   className="px-3.5 py-2.5 rounded-2xl liquid-glass-sub hover:opacity-90 disabled:opacity-50 liquid-text-primary text-xs font-semibold flex items-center gap-1.5 transition"
-                  title="Volver a leer metadatas de todos los servicios conectados"
+                  title={tr('Reload metadata from all connected services', 'Volver a leer metadatas de todos los servicios conectados')}
                 >
                   <RefreshCw className={`w-4 h-4 ${loadingSyncs ? 'animate-spin text-sky-400' : ''}`} />
-                  Actualizar todo
+                  {tr('Refresh all', 'Actualizar todo')}
                 </button>
 
-                {/* Opción para cambiar la vista entre Archivos Normales y Saves de Juegos (al lado del botón de Crear Sincronización) */}
                 <button
                   type="button"
                   onClick={() =>
@@ -2172,19 +2275,19 @@ export const App: React.FC = () => {
                   }`}
                   title={
                     activeSection === 'files'
-                      ? 'Ir al apartado de Saves de Videojuegos'
-                      : 'Volver al apartado de Archivos Normales'
+                      ? tr('Go to Game Saves section', 'Ir al apartado de Saves de Videojuegos')
+                      : tr('Back to Regular Files section', 'Volver al apartado de Archivos Normales')
                   }
                 >
                   {activeSection === 'files' ? (
                     <>
                       <Gamepad2 className="w-4 h-4 text-emerald-400" />
-                      <span>Saves de Juegos</span>
+                      <span>{tr('Game Saves', 'Saves de Juegos')}</span>
                     </>
                   ) : (
                     <>
                       <FolderSync className="w-4 h-4 text-sky-400" />
-                      <span>Archivos Normales</span>
+                      <span>{tr('Regular Files', 'Archivos Normales')}</span>
                     </>
                   )}
                 </button>
@@ -2195,7 +2298,7 @@ export const App: React.FC = () => {
                   className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:via-sky-400 hover:to-emerald-400 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-sky-500/25 transition"
                 >
                   <Plus className="w-4 h-4" />
-                  Nueva Sincronización
+                  {tr('New Sync', 'Nueva Sincronización')}
                 </button>
               </div>
             </div>
@@ -2223,11 +2326,15 @@ export const App: React.FC = () => {
 
                 <div className="max-w-lg space-y-2">
                   <h3 className="text-xl font-black liquid-text-primary">
-                    Haz clic aquí para buscar Saves de Videojuegos y Emuladores en tu PC
+                    {tr('Click here to scan for Game & Emulator Saves on your PC', 'Haz clic aquí para buscar Saves de Videojuegos y Emuladores en tu PC')}
                   </h3>
                   <p className="text-xs liquid-text-secondary leading-relaxed">
-                    Al pulsar en esta área se abrirá el menú de detección automática de partidas guardadas en videojuegos de PC, emuladores y ports/recompilaciones con carátulas de{' '}
-                    <strong>SteamGridDB</strong> para que selecciones y sincronices tus saves.
+                    {tr(
+                      'Clicking here opens automatic save detection for PC games, emulators, and ports with covers from ',
+                      'Al pulsar en esta área se abrirá el menú de detección automática de partidas guardadas en videojuegos de PC, emuladores y ports/recompilaciones con carátulas de '
+                    )}
+                    <strong>SteamGridDB</strong>{' '}
+                    {tr('so you can select and sync your saves.', 'para que selecciones y sincronices tus saves.')}
                   </p>
                 </div>
 
@@ -2239,12 +2346,11 @@ export const App: React.FC = () => {
                   }`}
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span>Escanear Saves de Videojuegos y Emuladores</span>
+                  <span>{tr('Scan Game & Emulator Saves', 'Escanear Saves de Videojuegos y Emuladores')}</span>
                 </span>
               </div>
             ) : (
               <>
-                {/* En la vista de videojuegos cuando ya hay juegos, mostrar barra/área rápida para volver a abrir el escáner */}
                 {activeSection === 'games' && (
                   <div
                     onClick={() => !busyAction && handleOpenGameScanner()}
@@ -2257,11 +2363,14 @@ export const App: React.FC = () => {
                     <div className="flex items-center gap-3">
                       <Gamepad2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
                       <span className="text-xs font-bold liquid-text-primary">
-                        ¿Tienes más videojuegos, emuladores o ports instalados? Haz clic aquí para escanear saves automáticamente.
+                        {tr(
+                          'Have more games, emulators, or ports installed? Click here to scan saves automatically.',
+                          '¿Tienes más videojuegos, emuladores o ports instalados? Haz clic aquí para escanear saves automáticamente.'
+                        )}
                       </span>
                     </div>
                     <span className="text-xs font-extrabold text-emerald-400 underline">
-                      Abrir escáner de saves
+                      {tr('Open save scanner', 'Abrir escáner de saves')}
                     </span>
                   </div>
                 )}
@@ -2351,7 +2460,7 @@ export const App: React.FC = () => {
                         <div className="liquid-glass rounded-3xl p-8 flex flex-col items-center justify-center liquid-text-muted gap-3">
                           <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
                           <p className="text-xs font-medium">
-                            Consultando sincronizaciones en {pInfo.label}...
+                            {tr(`Checking syncs in ${pInfo.label}...`, `Consultando sincronizaciones en ${pInfo.label}...`)}
                           </p>
                         </div>
                       ) : serviceMetas.length === 0 ? (
@@ -2361,10 +2470,10 @@ export const App: React.FC = () => {
                             className="liquid-glass rounded-3xl p-6 text-center cursor-pointer border border-dashed border-emerald-400/35 hover:border-emerald-400 transition"
                           >
                             <p className="text-xs liquid-text-secondary">
-                              No hay saves de videojuegos sincronizados en{' '}
+                              {tr('No game saves synced in ', 'No hay saves de videojuegos sincronizados en ')}
                               <strong>{pInfo.label}</strong>.{' '}
                               <span className="text-emerald-400 font-bold underline">
-                                Haz clic aquí para escanear tus juegos instalados
+                                {tr('Click here to scan your installed games', 'Haz clic aquí para escanear tus juegos instalados')}
                               </span>
                               .
                             </p>
@@ -2372,7 +2481,11 @@ export const App: React.FC = () => {
                         ) : (
                           <div className="liquid-glass rounded-3xl p-6 text-center">
                             <p className="text-xs liquid-text-muted">
-                              No hay sincronizaciones registradas en <strong>{pInfo.label}</strong>. Usa el botón superior <strong>+ Nueva Sincronización</strong> para agregar una.
+                              {tr('No syncs registered in ', 'No hay sincronizaciones registradas en ')}
+                              <strong>{pInfo.label}</strong>.{' '}
+                              {tr('Use the top button ', 'Usa el botón superior ')}
+                              <strong>+ {tr('New Sync', 'Nueva Sincronización')}</strong>{' '}
+                              {tr('to add one.', 'para agregar una.')}
                             </p>
                           </div>
                         )
@@ -2427,7 +2540,7 @@ export const App: React.FC = () => {
                                           <FolderSync className="w-10 h-10 stroke-[1.5]" />
                                         )}
                                         <span className="text-xs font-medium liquid-text-muted">
-                                          Sin carátula
+                                          {tr('No cover', 'Sin carátula')}
                                         </span>
                                       </div>
                                     )}
@@ -2438,17 +2551,17 @@ export const App: React.FC = () => {
                                         {isPendingPull && (
                                           <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-sky-500/90 text-white border border-sky-300/60 flex items-center gap-1 shadow">
                                             <ArrowDownToLine className="w-3 h-3" />
-                                            Pendiente de Pull
+                                            {tr('Pending Pull', 'Pendiente de Pull')}
                                           </span>
                                         )}
                                         {isLinked ? (
                                           <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md text-emerald-300 border border-emerald-400/40 flex items-center gap-1 shadow">
                                             <Link2 className="w-3 h-3" />
-                                            Vinculada
+                                            {tr('Linked', 'Vinculada')}
                                           </span>
                                         ) : (
                                           <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md text-amber-300 border border-amber-400/40 shadow">
-                                            Sin vincular en PC
+                                            {tr('Not linked on PC', 'Sin vincular en PC')}
                                           </span>
                                         )}
                                       </div>
@@ -2459,10 +2572,10 @@ export const App: React.FC = () => {
                                           disabled={Boolean(busyAction)}
                                           onClick={() => handleChangeCoverForSync(sync)}
                                           className="px-2.5 py-1 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md text-white text-[11px] font-medium flex items-center gap-1 border border-white/20 transition"
-                                          title="Cambiar imagen de carátula"
+                                          title={tr('Change cover image', 'Cambiar imagen de carátula')}
                                         >
                                           <ImagePlus className="w-3 h-3 text-sky-300" />
-                                          {sync.coverImage ? 'Cambiar' : 'Carátula'}
+                                          {sync.coverImage ? tr('Change', 'Cambiar') : tr('Cover', 'Carátula')}
                                         </button>
                                         {sync.coverImage && (
                                           <button
@@ -2470,7 +2583,7 @@ export const App: React.FC = () => {
                                             disabled={Boolean(busyAction)}
                                             onClick={() => handleRemoveCoverForSync(sync)}
                                             className="p-1 rounded-full bg-black/65 hover:bg-rose-600/80 backdrop-blur-md text-white border border-white/20 transition"
-                                            title="Quitar carátula"
+                                            title={tr('Remove cover', 'Quitar carátula')}
                                           >
                                             <X className="w-3 h-3" />
                                           </button>
@@ -2494,7 +2607,7 @@ export const App: React.FC = () => {
                                     <div className="grid grid-cols-2 gap-2 text-xs">
                                       <div className="liquid-glass-sub rounded-2xl p-2.5">
                                         <span className="liquid-text-muted block text-[10px]">
-                                          Último Push
+                                          {tr('Last Push', 'Último Push')}
                                         </span>
                                         <span className="text-emerald-400 font-bold flex items-center gap-1 mt-0.5 truncate">
                                           <Laptop className="w-3 h-3 flex-shrink-0" />
@@ -2504,10 +2617,10 @@ export const App: React.FC = () => {
 
                                       <div className="liquid-glass-sub rounded-2xl p-2.5">
                                         <span className="liquid-text-muted block text-[10px]">
-                                          Archivos / Fecha
+                                          {tr('Files / Date', 'Archivos / Fecha')}
                                         </span>
                                         <span className="liquid-text-primary font-semibold block mt-0.5 truncate">
-                                          {sync.lastPushedFileCount} arch. &bull;{' '}
+                                          {sync.lastPushedFileCount} {tr('files', 'arch.')} &bull;{' '}
                                           {formatDate(sync.lastPushedAt)}
                                         </span>
                                       </div>
@@ -2528,7 +2641,7 @@ export const App: React.FC = () => {
                                             className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 text-[11px] font-semibold flex items-center gap-1 transition"
                                           >
                                             <EyeOff className="w-3 h-3" />
-                                            Ignorar ({effectiveIgnored.length})
+                                            {tr('Ignore', 'Ignorar')} ({effectiveIgnored.length})
                                           </button>
                                           <div className="flex items-center gap-1">
                                             <button
@@ -2536,22 +2649,22 @@ export const App: React.FC = () => {
                                                 window.syncApi.openLocalPath(localMapping!.localPath)
                                               }
                                               className="px-2 py-1 rounded-lg liquid-glass liquid-text-secondary text-[11px] hover:opacity-90"
-                                              title="Abrir carpeta"
+                                              title={tr('Open folder', 'Abrir carpeta')}
                                             >
-                                              Abrir
+                                              {tr('Open', 'Abrir')}
                                             </button>
                                             <button
                                               onClick={() => handleAssignLocalFolderAndPull(sync, false)}
                                               disabled={Boolean(busyAction)}
                                               className="px-2 py-1 rounded-lg liquid-glass liquid-text-secondary text-[11px] hover:opacity-90"
                                             >
-                                              Ruta
+                                              {tr('Path', 'Ruta')}
                                             </button>
                                             <button
                                               onClick={() => handleUnlinkLocal(sync)}
                                               disabled={Boolean(busyAction)}
                                               className="p-1 rounded-lg liquid-glass text-rose-400 hover:opacity-90"
-                                              title="Desvincular de esta PC"
+                                              title={tr('Unlink from this PC', 'Desvincular de esta PC')}
                                             >
                                               <Link2Off className="w-3 h-3" />
                                             </button>
@@ -2563,7 +2676,7 @@ export const App: React.FC = () => {
                                         <div className="flex items-center justify-between gap-1.5">
                                           <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
                                             <Sparkles className="w-3 h-3" />
-                                            Ruta detectada en esta PC:
+                                            {tr('Path detected on this PC:', 'Ruta detectada en esta PC:')}
                                           </span>
                                           {autoMatch.emulatorName && (
                                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
@@ -2589,13 +2702,13 @@ export const App: React.FC = () => {
                                             ) : (
                                               <ArrowDownToLine className="w-3.5 h-3.5" />
                                             )}
-                                            Sincronizar automático
+                                            {tr('Auto sync', 'Sincronizar automático')}
                                           </button>
                                           <button
                                             type="button"
                                             onClick={() => handleAssignLocalFolderAndPull(sync, true)}
                                             disabled={Boolean(busyAction)}
-                                            title="Elegir ruta manualmente"
+                                            title={tr('Pick path manually', 'Elegir ruta manualmente')}
                                             className="px-2 py-1.5 rounded-xl liquid-glass hover:bg-white/10 liquid-text-secondary text-[11px] font-semibold flex items-center gap-1 transition"
                                           >
                                             <FolderOpen className="w-3 h-3" />
@@ -2609,10 +2722,10 @@ export const App: React.FC = () => {
                                           {scanningAutoPaths && isGame ? (
                                             <>
                                               <Loader2 className="w-3 h-3 animate-spin text-sky-400" />
-                                              <span>Buscando ruta en esta PC...</span>
+                                              <span>{tr('Searching path on this PC...', 'Buscando ruta en esta PC...')}</span>
                                             </>
                                           ) : (
-                                            <span>Ingresa o selecciona la ruta en esta PC:</span>
+                                            <span>{tr('Enter or select the path on this PC:', 'Ingresa o selecciona la ruta en esta PC:')}</span>
                                           )}
                                         </p>
                                         <div className="flex items-center gap-1">
@@ -2625,14 +2738,14 @@ export const App: React.FC = () => {
                                                 [sync.id]: e.target.value,
                                               }))
                                             }
-                                            placeholder="C:\ruta\del\save..."
+                                            placeholder="C:\path\to\save..."
                                             className="flex-1 min-w-0 liquid-glass rounded-lg px-2 py-1 text-[11px] font-mono liquid-text-primary focus:outline-none"
                                           />
                                           <button
                                             type="button"
                                             onClick={() => handleBrowseManualPath(sync)}
                                             disabled={Boolean(busyAction)}
-                                            title="Seleccionar carpeta desde tu computadora"
+                                            title={tr('Select folder from your computer', 'Seleccionar carpeta desde tu computadora')}
                                             className="p-1.5 rounded-lg liquid-glass hover:bg-white/10 text-sky-400 transition"
                                           >
                                             <FolderOpen className="w-3.5 h-3.5" />
@@ -2646,7 +2759,7 @@ export const App: React.FC = () => {
                                             className="flex-1 py-1.5 px-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1 transition"
                                           >
                                             <ArrowDownToLine className="w-3.5 h-3.5" />
-                                            Vincular y Pull
+                                            {tr('Link & Pull', 'Vincular y Pull')}
                                           </button>
                                           {!isGame && (
                                             <button
@@ -2764,13 +2877,13 @@ export const App: React.FC = () => {
                                           <ImagePlus className="w-6 h-6" />
                                         )}
                                         <span className="text-[10px] font-medium liquid-text-muted">
-                                          Carátula
+                                          {tr('Cover', 'Carátula')}
                                         </span>
                                       </div>
                                     )}
                                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
                                       <span className="text-[10px] font-bold text-white px-2 py-1 rounded-lg bg-black/60">
-                                        Cambiar
+                                        {tr('Change', 'Cambiar')}
                                       </span>
                                     </div>
                                   </div>
@@ -2783,23 +2896,23 @@ export const App: React.FC = () => {
                                       {isPendingPull && (
                                         <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/50 flex items-center gap-1">
                                           <ArrowDownToLine className="w-3 h-3" />
-                                          Pendiente de Pull
+                                          {tr('Pending Pull', 'Pendiente de Pull')}
                                         </span>
                                       )}
                                       {isLinked ? (
                                         <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-400/30 flex items-center gap-1">
                                           <Link2 className="w-3 h-3" />
-                                          Vinculada en este dispositivo
+                                          {tr('Linked on this device', 'Vinculada en este dispositivo')}
                                         </span>
                                       ) : (
                                         <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-400/30">
-                                          Disponible en {pInfo.label} &bull; Sin ruta local asignada
+                                          {tr(`Available on ${pInfo.label} • No local path assigned`, `Disponible en ${pInfo.label} • Sin ruta local asignada`)}
                                         </span>
                                       )}
                                       {!isGame && effectiveIgnored.length > 0 && (
                                         <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-400/30 flex items-center gap-1">
                                           <EyeOff className="w-3 h-3" />
-                                          {effectiveIgnored.length} ignorado(s)
+                                          {effectiveIgnored.length} {tr('ignored', 'ignorado(s)')}
                                         </span>
                                       )}
                                     </div>
@@ -2808,7 +2921,7 @@ export const App: React.FC = () => {
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
                                       <div className="liquid-glass-sub rounded-2xl p-2.5">
                                         <span className="liquid-text-muted block text-[11px]">
-                                          Carpeta en {pInfo.label}
+                                          {tr(`Folder in ${pInfo.label}`, `Carpeta en ${pInfo.label}`)}
                                         </span>
                                         <span
                                           className="text-sky-400 font-semibold font-mono flex items-center gap-1.5 mt-0.5 truncate"
@@ -2821,7 +2934,7 @@ export const App: React.FC = () => {
 
                                       <div className="liquid-glass-sub rounded-2xl p-2.5">
                                         <span className="liquid-text-muted block text-[11px]">
-                                          Último dispositivo que subió (Push)
+                                          {tr('Last push device', 'Último dispositivo que subió (Push)')}
                                         </span>
                                         <span className="text-emerald-400 font-bold flex items-center gap-1.5 mt-0.5 truncate">
                                           <Laptop className="w-3.5 h-3.5 flex-shrink-0" />
@@ -2831,11 +2944,11 @@ export const App: React.FC = () => {
 
                                       <div className="liquid-glass-sub rounded-2xl p-2.5">
                                         <span className="liquid-text-muted block text-[11px]">
-                                          Última subida / Archivos
+                                          {tr('Last upload / Files', 'Última subida / Archivos')}
                                         </span>
                                         <span className="liquid-text-primary font-semibold block mt-0.5 truncate">
                                           {formatDate(sync.lastPushedAt)} ({sync.lastPushedFileCount}{' '}
-                                          arch.)
+                                          {tr('files', 'arch.')})
                                         </span>
                                       </div>
                                     </div>
@@ -2846,7 +2959,7 @@ export const App: React.FC = () => {
                                         <div className="flex items-center gap-2 text-xs min-w-0 flex-1">
                                           <HardDrive className="w-4 h-4 text-indigo-400 flex-shrink-0" />
                                           <span className="liquid-text-muted flex-shrink-0">
-                                            Ruta en esta PC:
+                                            {tr('Path on this PC:', 'Ruta en esta PC:')}
                                           </span>
                                           <code className="liquid-text-primary truncate font-mono">
                                             {localMapping?.localPath}
@@ -2859,7 +2972,7 @@ export const App: React.FC = () => {
                                             className="px-2.5 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/30 text-amber-400 text-xs font-semibold flex items-center gap-1 transition"
                                           >
                                             <EyeOff className="w-3.5 h-3.5" />
-                                            Ignorar archivos ({effectiveIgnored.length})
+                                            {tr('Ignore files', 'Ignorar archivos')} ({effectiveIgnored.length})
                                           </button>
                                           <button
                                             onClick={() =>
@@ -2868,20 +2981,20 @@ export const App: React.FC = () => {
                                             className="px-2.5 py-1 rounded-xl liquid-glass liquid-text-secondary text-xs flex items-center gap-1 transition hover:opacity-90"
                                           >
                                             <FolderOpen className="w-3.5 h-3.5" />
-                                            Abrir
+                                            {tr('Open', 'Abrir')}
                                           </button>
                                           <button
                                             onClick={() => handleAssignLocalFolderAndPull(sync, false)}
                                             disabled={Boolean(busyAction)}
                                             className="px-2.5 py-1 rounded-xl liquid-glass liquid-text-secondary text-xs transition hover:opacity-90"
                                           >
-                                            Cambiar ruta
+                                            {tr('Change path', 'Cambiar ruta')}
                                           </button>
                                           <button
                                             onClick={() => handleUnlinkLocal(sync)}
                                             disabled={Boolean(busyAction)}
                                             className="p-1 rounded-xl liquid-glass text-rose-400 transition hover:opacity-90"
-                                            title="Desvincular carpeta en este dispositivo"
+                                            title={tr('Unlink folder on this device', 'Desvincular carpeta en este dispositivo')}
                                           >
                                             <Link2Off className="w-3.5 h-3.5" />
                                           </button>
@@ -2893,7 +3006,7 @@ export const App: React.FC = () => {
                                           <div className="flex items-center gap-2 flex-wrap">
                                             <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
                                               <Sparkles className="w-3.5 h-3.5" />
-                                              Ruta detectada automáticamente en esta PC:
+                                              {tr('Path automatically detected on this PC:', 'Ruta detectada automáticamente en esta PC:')}
                                             </span>
                                             {autoMatch.emulatorName && (
                                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-400/40">
@@ -2919,13 +3032,13 @@ export const App: React.FC = () => {
                                             ) : (
                                               <ArrowDownToLine className="w-4 h-4" />
                                             )}
-                                            Sincronizar automático (Pull)
+                                            {tr('Auto sync (Pull)', 'Sincronizar automático (Pull)')}
                                           </button>
                                           <button
                                             type="button"
                                             onClick={() => handleAssignLocalFolderAndPull(sync, true)}
                                             disabled={Boolean(busyAction)}
-                                            title="Elegir ruta manualmente"
+                                            title={tr('Pick path manually', 'Elegir ruta manualmente')}
                                             className="px-2.5 py-2 rounded-xl liquid-glass hover:bg-white/10 liquid-text-secondary text-[11px] font-semibold flex items-center gap-1 transition"
                                           >
                                             <FolderOpen className="w-3.5 h-3.5" />
@@ -2939,11 +3052,11 @@ export const App: React.FC = () => {
                                           {scanningAutoPaths && isGame ? (
                                             <>
                                               <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
-                                              <span>Buscando ruta de guardado automáticamente en esta computadora...</span>
+                                              <span>{tr('Automatically searching save path on this computer...', 'Buscando ruta de guardado automáticamente en esta computadora...')}</span>
                                             </>
                                           ) : (
                                             <span>
-                                              No se encontró la ruta automáticamente. Ingrésala o selecciónala desde tu computadora para descargar los archivos:
+                                              {tr('Path not found automatically. Enter or select it from your computer to download files:', 'No se encontró la ruta automáticamente. Ingrésala o selecciónala desde tu computadora para descargar los archivos:')}
                                             </span>
                                           )}
                                         </p>
@@ -2958,7 +3071,7 @@ export const App: React.FC = () => {
                                                   [sync.id]: e.target.value,
                                                 }))
                                               }
-                                              placeholder="Ingresa o selecciona la ruta en esta computadora..."
+                                              placeholder={tr('Enter or select path on this computer...', 'Ingresa o selecciona la ruta en esta computadora...')}
                                               className="flex-1 min-w-0 liquid-glass rounded-xl px-3 py-2 text-xs font-mono liquid-text-primary focus:outline-none"
                                             />
                                             <button
@@ -2966,10 +3079,10 @@ export const App: React.FC = () => {
                                               onClick={() => handleBrowseManualPath(sync)}
                                               disabled={Boolean(busyAction)}
                                               className="px-3 py-2 rounded-xl liquid-glass hover:bg-white/10 text-sky-400 text-xs font-semibold flex items-center gap-1.5 transition"
-                                              title="Seleccionar carpeta desde tu computadora"
+                                              title={tr('Select folder from your computer', 'Seleccionar carpeta desde tu computadora')}
                                             >
                                               <FolderOpen className="w-3.5 h-3.5" />
-                                              Examinar
+                                              {tr('Browse', 'Examinar')}
                                             </button>
                                           </div>
                                           <div className="flex items-center gap-2 flex-wrap">
@@ -2979,7 +3092,7 @@ export const App: React.FC = () => {
                                               className="px-3 py-2 rounded-xl liquid-glass text-amber-400 text-xs font-semibold flex items-center gap-1.5 transition"
                                             >
                                               <EyeOff className="w-3.5 h-3.5" />
-                                              Ignorar ({effectiveIgnored.length})
+                                              {tr('Ignore', 'Ignorar')} ({effectiveIgnored.length})
                                             </button>
                                             <button
                                               type="button"
@@ -2988,7 +3101,7 @@ export const App: React.FC = () => {
                                               className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shadow-md"
                                             >
                                               <ArrowDownToLine className="w-4 h-4" />
-                                              Vincular y Hacer Pull
+                                              {tr('Link & Pull', 'Vincular y Hacer Pull')}
                                             </button>
                                             <button
                                               type="button"
@@ -2996,7 +3109,7 @@ export const App: React.FC = () => {
                                               disabled={Boolean(busyAction)}
                                               className="px-3 py-2 rounded-xl liquid-glass liquid-text-primary text-xs font-semibold transition"
                                             >
-                                              Solo asignar ruta
+                                              {tr('Assign path only', 'Solo asignar ruta')}
                                             </button>
                                           </div>
                                         </div>

@@ -9,6 +9,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
+import { useLang } from '../i18n'
 import { CloudProvider, DriveFolderItem } from '../types'
 
 const PROVIDER_LABELS: Record<CloudProvider, string> = {
@@ -32,9 +33,10 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
   onClose,
   onSelect,
 }) => {
+  const [, , tr] = useLang()
   const providerLabel = PROVIDER_LABELS[provider] || 'Google Drive'
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ path: string; name: string }>>([
-    { path: '', name: `Raíz (${providerLabel})` },
+    { path: '', name: `${tr('Root', 'Raíz')} (${providerLabel})` },
   ])
   const [folders, setFolders] = useState<DriveFolderItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -47,7 +49,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
   const cleanLocalName = (localFolderName || '').trim()
 
   useEffect(() => {
-    setBreadcrumbs([{ path: '', name: `Raíz (${providerLabel})` }])
+    setBreadcrumbs([{ path: '', name: `${tr('Root', 'Raíz')} (${providerLabel})` }])
   }, [provider, providerLabel])
 
   useEffect(() => {
@@ -181,7 +183,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
           <div className="flex items-center gap-2.5">
             <Folder className="w-5 h-5 text-sky-400" />
             <h3 className="text-lg font-bold liquid-text-primary">
-              Seleccionar Carpeta en {providerLabel}
+              {tr(`Select Folder in ${providerLabel}`, `Seleccionar Carpeta en ${providerLabel}`)}
             </h3>
           </div>
           <button
@@ -206,19 +208,25 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
               <div className="text-xs leading-relaxed">
                 <span className="font-bold text-emerald-300 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                  Crear automáticamente carpeta «{cleanLocalName}» en la ruta seleccionada
+                  {tr(
+                    `Automatically create "${cleanLocalName}" folder in selected path`,
+                    `Crear automáticamente carpeta «${cleanLocalName}» en la ruta seleccionada`
+                  )}
                 </span>
                 <span className="liquid-text-secondary block mt-0.5">
                   {autoAppendLocalName ? (
                     <>
-                      Se creará la subcarpeta y la ruta final en Drive será:{' '}
+                      {tr('Subfolder will be created and final path will be:', 'Se creará la subcarpeta y la ruta final en Drive será:')}{' '}
                       <code className="text-emerald-300 font-mono font-bold">
                         {previewAutoPath(currentFolder.path)}
                       </code>
                     </>
                   ) : (
                     <>
-                      Desactivado: los archivos se guardarán directamente en la carpeta que elijas.
+                      {tr(
+                        'Disabled: files will be saved directly in the folder you choose.',
+                        'Desactivado: los archivos se guardarán directamente en la carpeta que elijas.'
+                      )}
                     </>
                   )}
                 </span>
@@ -266,7 +274,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
             type="text"
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder="O escribe otro nombre para crear una carpeta aquí..."
+            placeholder={tr('Or type a new folder name to create here...', 'O escribe otro nombre para crear una carpeta aquí...')}
             className="flex-1 liquid-glass-sub rounded-xl px-3.5 py-2 text-sm liquid-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
           />
           <button
@@ -279,7 +287,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
             ) : (
               <FolderPlus className="w-4 h-4" />
             )}
-            Crear
+            {tr('Create', 'Crear')}
           </button>
         </form>
 
@@ -294,14 +302,19 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 liquid-text-muted gap-2">
               <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
-              <span className="text-sm">Consultando carpetas en {providerLabel} con rclone...</span>
+              <span className="text-sm">
+                {tr(`Loading folders in ${providerLabel} with rclone...`, `Consultando carpetas en ${providerLabel} con rclone...`)}
+              </span>
             </div>
           ) : folders.length === 0 ? (
             <div className="text-center py-12 liquid-text-muted text-sm">
-              No hay subcarpetas dentro de{' '}
+              {tr('No subfolders inside ', 'No hay subcarpetas dentro de ')}
               <strong className="liquid-text-primary">{currentFolder.name}</strong>.
               <p className="text-xs mt-1">
-                Puedes usar esta ruta actual abajo o crear una carpeta nueva arriba.
+                {tr(
+                  'You can use this current path below or create a new folder above.',
+                  'Puedes usar esta ruta actual abajo o crear una carpeta nueva arriba.'
+                )}
               </p>
             </div>
           ) : (
@@ -327,7 +340,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
                         {folder.name}
                       </span>
                       <span className="text-[11px] liquid-text-muted font-mono block truncate">
-                        Destino: {targetPreview}
+                        {tr('Destination:', 'Destino:')} {targetPreview}
                       </span>
                     </div>
                   </button>
@@ -340,7 +353,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
                       })
                     }
                     className="px-3.5 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500 text-sky-400 hover:text-white border border-sky-400/30 text-xs font-semibold transition flex items-center gap-1 flex-shrink-0"
-                    title={`Guardar en ${targetPreview}`}
+                    title={tr(`Save in ${targetPreview}`, `Guardar en ${targetPreview}`)}
                   >
                     {creating ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -348,8 +361,8 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
                       <Check className="w-3.5 h-3.5" />
                     )}
                     {autoAppendLocalName && cleanLocalName
-                      ? `Elegir (+ /${cleanLocalName})`
-                      : 'Elegir esta'}
+                      ? tr(`Select (+ /${cleanLocalName})`, `Elegir (+ /${cleanLocalName})`)
+                      : tr('Select this', 'Elegir esta')}
                   </button>
                 </div>
               )
@@ -360,7 +373,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
         {/* Footer: select current folder or create local-named subfolder in current path */}
         <div className="px-6 py-4 liquid-glass-sub border-x-0 border-b-0 flex flex-wrap items-center justify-between gap-3">
           <div className="text-xs liquid-text-muted truncate max-w-[260px]">
-            Ruta final:{' '}
+            {tr('Final path:', 'Ruta final:')}{' '}
             <strong className="text-sky-300 font-mono">
               {autoAppendLocalName && cleanLocalName
                 ? previewAutoPath(currentFolder.path)
@@ -373,7 +386,7 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
               disabled={creating}
               className="px-4 py-2 rounded-xl liquid-glass liquid-text-secondary text-xs font-semibold transition hover:opacity-90"
             >
-              Cancelar
+              {tr('Cancel', 'Cancelar')}
             </button>
 
             {currentFolder.path || (autoAppendLocalName && cleanLocalName) ? (
@@ -393,12 +406,15 @@ export const DriveFolderModal: React.FC<DriveFolderModalProps> = ({
                   <Check className="w-4 h-4" />
                 )}
                 {autoAppendLocalName && cleanLocalName
-                  ? `Crear y usar "${previewAutoPath(currentFolder.path)}"`
-                  : `Usar "/${currentFolder.path}"`}
+                  ? tr(
+                      `Create and use "${previewAutoPath(currentFolder.path)}"`,
+                      `Crear y usar "${previewAutoPath(currentFolder.path)}"`
+                    )
+                  : tr(`Use "/${currentFolder.path}"`, `Usar "/${currentFolder.path}"`)}
               </button>
             ) : (
               <span className="text-xs liquid-text-muted italic">
-                Elige o crea una carpeta
+                {tr('Pick or create a folder', 'Elige o crea una carpeta')}
               </span>
             )}
           </div>

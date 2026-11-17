@@ -8,6 +8,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
+import { useLang } from '../i18n'
 import { UpdateCheckResult, UpdateProgressEvent } from '../types'
 
 interface Props {
@@ -23,6 +24,7 @@ export const UpdateModal: React.FC<Props> = ({
   updateProgress,
   onClose,
 }) => {
+  const [lang, , tr] = useLang()
   const [installing, setInstalling] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -30,7 +32,12 @@ export const UpdateModal: React.FC<Props> = ({
 
   const handleInstallUpdate = async () => {
     if (!updateInfo.downloadUrl || !updateInfo.assetName) {
-      setError('No se encontró un paquete ejecutable compatible en esta release.')
+      setError(
+        tr(
+          'No compatible executable package was found in this release.',
+          'No se encontró un paquete ejecutable compatible en esta release.'
+        )
+      )
       return
     }
 
@@ -45,7 +52,7 @@ export const UpdateModal: React.FC<Props> = ({
       setError(
         err instanceof Error
           ? err.message
-          : 'Error al descargar o instalar la actualización.'
+          : tr('Error downloading or installing update.', 'Error al descargar o instalar la actualización.')
       )
       setInstalling(false)
     }
@@ -54,7 +61,7 @@ export const UpdateModal: React.FC<Props> = ({
   const formatDate = (iso: string) => {
     if (!iso) return ''
     try {
-      return new Date(iso).toLocaleDateString('es-MX', {
+      return new Date(iso).toLocaleDateString(lang === 'es' ? 'es-MX' : 'en-US', {
         dateStyle: 'long',
       })
     } catch {
@@ -73,13 +80,14 @@ export const UpdateModal: React.FC<Props> = ({
             </div>
             <div>
               <h2 className="text-base font-extrabold liquid-text-primary flex items-center gap-2">
-                ¡Nueva versión disponible!
+                {tr('New version available!', '¡Nueva versión disponible!')}
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/35">
                   v{updateInfo.latestVersion}
                 </span>
               </h2>
               <p className="text-xs liquid-text-muted">
-                Versión actual instalada: <code className="text-sky-400 font-mono">v{updateInfo.currentVersion}</code>
+                {tr('Installed version:', 'Versión actual instalada:')}{' '}
+                <code className="text-sky-400 font-mono">v{updateInfo.currentVersion}</code>
               </p>
             </div>
           </div>
@@ -88,7 +96,7 @@ export const UpdateModal: React.FC<Props> = ({
             onClick={onClose}
             disabled={installing}
             className="liquid-text-muted hover:liquid-text-primary p-1.5 rounded-xl hover:bg-white/10 disabled:opacity-40 transition"
-            title="Cerrar ventana"
+            title={tr('Close window', 'Cerrar ventana')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -101,7 +109,7 @@ export const UpdateModal: React.FC<Props> = ({
               <div className="flex items-center gap-2 min-w-0">
                 <Loader2 className="w-4 h-4 animate-spin text-emerald-400 flex-shrink-0" />
                 <span className="font-bold liquid-text-primary truncate">
-                  {updateProgress?.phase || 'Iniciando descarga de la nueva versión...'}
+                  {updateProgress?.phase || tr('Starting download...', 'Iniciando descarga de la nueva versión...')}
                 </span>
                 {updateProgress?.detail && (
                   <span className="liquid-text-muted font-mono flex-shrink-0">
@@ -122,7 +130,10 @@ export const UpdateModal: React.FC<Props> = ({
               />
             </div>
             <p className="text-[11px] liquid-text-muted mt-2">
-              Al finalizar la descarga, SyncSeinen instalará la actualización y se reiniciará automáticamente.
+              {tr(
+                'Once the download finishes, SyncSeinen will install the update and restart automatically.',
+                'Al finalizar la descarga, SyncSeinen instalará la actualización y se reiniciará automáticamente.'
+              )}
             </p>
           </div>
         )}
@@ -154,7 +165,7 @@ export const UpdateModal: React.FC<Props> = ({
           {/* Changelog / Release Notes from GitHub */}
           <div className="space-y-2">
             <label className="block text-xs font-bold uppercase tracking-wider liquid-text-secondary">
-              Novedades y cambios en esta versión (GitHub Release)
+              {tr("What's new in this release (GitHub Release)", 'Novedades y cambios en esta versión (GitHub Release)')}
             </label>
             <div className="liquid-glass-sub rounded-2xl p-4 max-h-64 overflow-y-auto text-xs liquid-text-primary leading-relaxed whitespace-pre-wrap font-sans border border-white/10">
               {updateInfo.releaseNotes}
@@ -165,7 +176,7 @@ export const UpdateModal: React.FC<Props> = ({
             <div className="flex items-center gap-2 text-xs liquid-text-muted px-1">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
               <span>
-                Paquete detectado para tu sistema:{' '}
+                {tr('Package detected for your system:', 'Paquete detectado para tu sistema:')}{' '}
                 <code className="text-sky-400 font-mono">{updateInfo.assetName}</code>
               </span>
             </div>
@@ -180,7 +191,7 @@ export const UpdateModal: React.FC<Props> = ({
             disabled={installing}
             className="px-4 py-2.5 rounded-2xl liquid-glass-sub hover:opacity-90 disabled:opacity-40 liquid-text-secondary text-xs font-bold transition"
           >
-            Más tarde
+            {tr('Later', 'Más tarde')}
           </button>
           <button
             type="button"
@@ -191,12 +202,12 @@ export const UpdateModal: React.FC<Props> = ({
             {installing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Descargando e instalando...
+                {tr('Downloading and installing...', 'Descargando e instalando...')}
               </>
             ) : (
               <>
                 <ArrowDownToLine className="w-4 h-4" />
-                Aceptar e Instalar v{updateInfo.latestVersion}
+                {tr('Accept and Install', 'Aceptar e Instalar')} v{updateInfo.latestVersion}
               </>
             )}
           </button>

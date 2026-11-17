@@ -8,6 +8,7 @@ import {
   Search,
   X,
 } from 'lucide-react'
+import { useLang } from '../i18n'
 import { OnlineImageItem } from '../types'
 
 interface CoverPickerModalProps {
@@ -21,6 +22,7 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
   onClose,
   onSelectCover,
 }) => {
+  const [, , tr] = useLang()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<OnlineImageItem[]>([])
   const [selectedItem, setSelectedItem] = useState<OnlineImageItem | null>(null)
@@ -60,7 +62,7 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
       setError(
         err instanceof Error
           ? err.message
-          : 'Error al buscar imágenes en internet con DuckDuckGo.'
+          : tr('Error searching images on DuckDuckGo.', 'Error al buscar imágenes en internet con DuckDuckGo.')
       )
     } finally {
       setSearching(false)
@@ -104,7 +106,7 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
       }
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : 'No se pudo cargar la imagen local.'
+        err instanceof Error ? err.message : tr('Could not load local image.', 'No se pudo cargar la imagen local.')
       )
     } finally {
       setApplying(false)
@@ -126,7 +128,7 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
       setError(
         err instanceof Error
           ? err.message
-          : 'No se pudo descargar la imagen seleccionada. Prueba con otra imagen.'
+          : tr('Could not download the selected image. Try another one.', 'No se pudo descargar la imagen seleccionada. Prueba con otra imagen.')
       )
     } finally {
       setApplying(false)
@@ -144,10 +146,13 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-extrabold liquid-text-primary">
-                Buscador de Imágenes Online
+                {tr('Online Image Search', 'Buscador de Imágenes Online')}
               </h3>
               <p className="text-[11px] liquid-text-muted">
-                Escribe para buscar en DuckDuckGo Images o elige una foto desde tu PC
+                {tr(
+                  'Type to search DuckDuckGo Images or choose a photo from your PC',
+                  'Escribe para buscar en DuckDuckGo Images o elige una foto desde tu PC'
+                )}
               </p>
             </div>
           </div>
@@ -174,7 +179,7 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
               disabled={applying}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ingresa texto para buscar imágenes (ej. Hollow Knight, Programación Web...)"
+              placeholder={tr('Type to search images (e.g. Hollow Knight, Web Dev...)', 'Ingresa texto para buscar imágenes (ej. Hollow Knight, Programación Web...)')}
               className="w-full liquid-glass rounded-xl pl-10 pr-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
             />
           </div>
@@ -188,7 +193,7 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
             ) : (
               <Search className="w-4 h-4" />
             )}
-            Buscar
+            {tr('Search', 'Buscar')}
           </button>
         </form>
 
@@ -204,7 +209,7 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
             <div className="h-64 flex flex-col items-center justify-center liquid-text-muted gap-3">
               <Loader2 className="w-7 h-7 animate-spin text-sky-400" />
               <span className="text-sm font-medium">
-                Buscando imágenes en internet...
+                {tr('Searching images online...', 'Buscando imágenes en internet...')}
               </span>
             </div>
           ) : results.length === 0 ? (
@@ -214,13 +219,15 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
               </div>
               <p className="text-sm font-semibold liquid-text-primary">
                 {hasSearched
-                  ? 'No se encontraron imágenes para esa búsqueda'
-                  : 'Ingresa un texto arriba para ver las imágenes resultantes'}
+                  ? tr('No images found for this search', 'No se encontraron imágenes para esa búsqueda')
+                  : tr('Enter text above to see image results', 'Ingresa un texto arriba para ver las imágenes resultantes')}
               </p>
               <p className="text-xs liquid-text-muted max-w-md">
-                Haz clic en la imagen que te guste y pulsa{' '}
-                <strong className="text-emerald-300">Aceptar</strong> abajo a la derecha, o usa{' '}
-                <strong className="text-sky-300">Subir foto local</strong> para elegirla desde tu computadora.
+                {tr('Click an image you like and press ', 'Haz clic en la imagen que te guste y pulsa ')}
+                <strong className="text-emerald-300">{tr('Accept', 'Aceptar')}</strong>
+                {tr(' at the bottom right, or use ', ' abajo a la derecha, o usa ')}
+                <strong className="text-sky-300">{tr('Upload local photo', 'Subir foto local')}</strong>
+                {tr(' to pick one from your computer.', ' para elegirla desde tu computadora.')}
               </p>
             </div>
           ) : (
@@ -268,10 +275,10 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
           <div className="text-xs liquid-text-muted truncate max-w-[230px]">
             {selectedItem ? (
               <span className="text-emerald-300 font-semibold">
-                ✓ Imagen seleccionada lista para aplicar
+                {tr('✓ Selected image ready to apply', '✓ Imagen seleccionada lista para aplicar')}
               </span>
             ) : (
-              <span>Selecciona una imagen o sube una de tu PC</span>
+              <span>{tr('Select an image or upload from your PC', 'Selecciona una imagen o sube una de tu PC')}</span>
             )}
           </div>
 
@@ -282,10 +289,10 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
               disabled={applying}
               onClick={handlePickLocalFile}
               className="px-4 py-2.5 rounded-2xl liquid-glass hover:bg-white/10 disabled:opacity-50 text-sky-300 text-xs font-bold flex items-center gap-2 border border-sky-400/35 transition"
-              title="Extraer imagen directamente de tu computadora"
+              title={tr('Pick an image file from your computer', 'Extraer imagen directamente de tu computadora')}
             >
               <HardDrive className="w-4 h-4 text-sky-400" />
-              Subir foto local
+              {tr('Upload local photo', 'Subir foto local')}
             </button>
 
             {/* Botón de Aceptar abajo a la derecha */}
@@ -298,12 +305,12 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
               {applying ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Aplicando...
+                  {tr('Applying...', 'Aplicando...')}
                 </>
               ) : (
                 <>
                   <Check className="w-4 h-4" />
-                  Aceptar
+                  {tr('Accept', 'Aceptar')}
                 </>
               )}
             </button>
