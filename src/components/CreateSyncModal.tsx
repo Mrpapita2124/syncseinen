@@ -359,7 +359,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                 </button>
               </div>
 
-              {localPath && !isGameSave && (
+              {localPath && (
                 <div className="mt-2.5 flex items-center justify-between liquid-glass-sub rounded-xl px-3.5 py-2">
                   <div className="text-xs liquid-text-secondary flex items-center gap-2 truncate">
                     <EyeOff className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
