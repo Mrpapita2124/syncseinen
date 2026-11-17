@@ -1,6 +1,6 @@
 {
   "name": "sync-seinen",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "private": true,
   "description": "SyncSeinen",
   "main": "dist-electron/main.js",

@@ -132,21 +132,35 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
     setIsCoverPickerOpen(true)
   }
 
+  const safeGameFolderName = (name.trim() || '')
+    .replace(/[<>:"/\\|?*]+/g, '_')
+    .trim()
+  const autoGameDrivePath = safeGameFolderName
+    ? `SyncSeinen_games_saves/${safeGameFolderName}`
+    : 'SyncSeinen_games_saves/<nombre>'
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim() || !driveFolder || !localPath) {
+    if (!name.trim() || !localPath || (!isGameSave && !driveFolder)) {
       setError(
-        `Completa el nombre, la carpeta de tu computadora y la carpeta en ${providerLabel}.`
+        isGameSave
+          ? 'Completa el nombre y la carpeta de tu computadora.'
+          : `Completa el nombre, la carpeta de tu computadora y la carpeta en ${providerLabel}.`
       )
       return
     }
+    const targetDrivePath = isGameSave
+      ? `SyncSeinen_games_saves/${safeGameFolderName}`
+      : driveFolder!.path
+    const targetDriveName = isGameSave ? safeGameFolderName : driveFolder!.name
+
     setError(null)
     try {
       await onCreated({
         provider,
         name: name.trim(),
-        driveFolderPath: driveFolder.path,
-        driveFolderName: driveFolder.name,
+        driveFolderPath: targetDrivePath,
+        driveFolderName: targetDriveName,
         localPath,
         ignoredPaths,
         coverImage,
@@ -383,68 +397,90 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
-                3. Carpeta en {providerLabel} (Destino donde rclone guardará los archivos)
+                3. Carpeta en {providerLabel}{' '}
+                {isGameSave
+                  ? '(Automática para videojuegos)'
+                  : '(Destino donde rclone guardará los archivos)'}
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={driveFolder ? `/${driveFolder.path}` : ''}
-                  placeholder={`Selecciona o crea una carpeta en tu ${providerLabel}...`}
-                  className="flex-1 liquid-glass-sub rounded-xl px-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 font-mono"
-                />
-                <button
-                  type="button"
-                  disabled={isCreating || creatingSubfolder}
-                  onClick={() => setIsDrivePickerOpen(true)}
-                  className="px-4 py-2.5 rounded-xl liquid-glass hover:opacity-90 disabled:opacity-50 liquid-text-primary text-sm font-semibold flex items-center gap-2 transition flex-shrink-0"
-                >
-                  <Cloud className="w-4 h-4 text-sky-400" />
-                  Elegir en {providerLabel}
-                </button>
-              </div>
 
-              {/* Opción rápida para crear y añadir automáticamente una subcarpeta con el nombre de la carpeta de la PC */}
-              {localFolderName && (
-                <div className="mt-2.5 liquid-glass-sub rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 border border-emerald-400/25">
-                  {driveEndsWithLocalName ? (
-                    <div className="flex items-center gap-2 text-xs text-emerald-300 font-medium">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                      <span>
-                        Subcarpeta automática lista en {providerLabel}:{' '}
-                        <code className="font-mono font-bold text-emerald-300">
-                          /{driveFolder?.path}
-                        </code>
-                      </span>
+              {isGameSave ? (
+                <div className="liquid-glass-sub rounded-xl px-4 py-3 border border-emerald-400/30 flex items-center gap-3">
+                  <Gamepad2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-mono text-emerald-300 truncate">
+                      /{autoGameDrivePath}
                     </div>
-                  ) : (
-                    <>
-                      <div className="text-xs liquid-text-secondary flex-1 min-w-[200px]">
-                        ¿Guardar dentro de una carpeta llamada{' '}
-                        <strong className="text-emerald-300">«{localFolderName}»</strong> en{' '}
-                        {driveFolder ? `/${driveFolder.path}` : `Raíz (${providerLabel})`}?
-                      </div>
-                      <button
-                        type="button"
-                        disabled={isCreating || creatingSubfolder}
-                        onClick={handleCreateAutoSubfolderInDrive}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/35 border border-emerald-400/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition flex-shrink-0"
-                      >
-                        {creatingSubfolder ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <FolderPlus className="w-3.5 h-3.5" />
-                        )}
-                        Crear «/{driveFolder ? `${driveFolder.path}/${localFolderName}` : localFolderName}»
-                      </button>
-                    </>
-                  )}
+                    <p className="text-xs liquid-text-muted mt-0.5">
+                      Los saves de videojuegos siempre se guardan automáticamente en{' '}
+                      <code className="text-emerald-300 font-mono">SyncSeinen_games_saves</code>{' '}
+                      con el nombre de la sincronización.
+                    </p>
+                  </div>
                 </div>
-              )}
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={driveFolder ? `/${driveFolder.path}` : ''}
+                      placeholder={`Selecciona o crea una carpeta en tu ${providerLabel}...`}
+                      className="flex-1 liquid-glass-sub rounded-xl px-4 py-2.5 text-sm liquid-text-primary placeholder-slate-400 font-mono"
+                    />
+                    <button
+                      type="button"
+                      disabled={isCreating || creatingSubfolder}
+                      onClick={() => setIsDrivePickerOpen(true)}
+                      className="px-4 py-2.5 rounded-xl liquid-glass hover:opacity-90 disabled:opacity-50 liquid-text-primary text-sm font-semibold flex items-center gap-2 transition flex-shrink-0"
+                    >
+                      <Cloud className="w-4 h-4 text-sky-400" />
+                      Elegir en {providerLabel}
+                    </button>
+                  </div>
 
-              <p className="text-xs liquid-text-muted mt-2 leading-relaxed">
-                Los archivos se sincronizarán vía <strong>rclone</strong> en la carpeta elegida, mientras que en <code className="text-sky-400 font-mono">_SyncSeinen_Metadata</code> se guardará la metadata y la carátula.
-              </p>
+                  {/* Opción rápida para crear y añadir automáticamente una subcarpeta con el nombre de la carpeta de la PC */}
+                  {localFolderName && (
+                    <div className="mt-2.5 liquid-glass-sub rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 border border-emerald-400/25">
+                      {driveEndsWithLocalName ? (
+                        <div className="flex items-center gap-2 text-xs text-emerald-300 font-medium">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          <span>
+                            Subcarpeta automática lista en {providerLabel}:{' '}
+                            <code className="font-mono font-bold text-emerald-300">
+                              /{driveFolder?.path}
+                            </code>
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-xs liquid-text-secondary flex-1 min-w-[200px]">
+                            ¿Guardar dentro de una carpeta llamada{' '}
+                            <strong className="text-emerald-300">«{localFolderName}»</strong> en{' '}
+                            {driveFolder ? `/${driveFolder.path}` : `Raíz (${providerLabel})`}?
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isCreating || creatingSubfolder}
+                            onClick={handleCreateAutoSubfolderInDrive}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/35 border border-emerald-400/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition flex-shrink-0"
+                          >
+                            {creatingSubfolder ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <FolderPlus className="w-3.5 h-3.5" />
+                            )}
+                            Crear «/{driveFolder ? `${driveFolder.path}/${localFolderName}` : localFolderName}»
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-xs liquid-text-muted mt-2 leading-relaxed">
+                    Los archivos se sincronizarán vía <strong>rclone</strong> en la carpeta elegida, mientras que en <code className="text-sky-400 font-mono">_SyncSeinen_Metadata</code> se guardará la metadata y la carátula.
+                  </p>
+                </>
+              )}
             </div>
 
             {error && (
@@ -475,7 +511,13 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isCreating || creatingSubfolder || !name.trim() || !driveFolder || !localPath}
+                  disabled={
+                    isCreating ||
+                    creatingSubfolder ||
+                    !name.trim() ||
+                    !localPath ||
+                    (!isGameSave && !driveFolder)
+                  }
                   className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:via-sky-400 hover:to-emerald-400 disabled:opacity-50 text-white text-sm font-bold flex items-center gap-2 transition shadow-lg shadow-sky-500/25"
                 >
                   {isCreating ? (
@@ -512,7 +554,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
         title={name || 'Nueva Sincronización'}
         provider={provider}
         localPath={localPath}
-        driveFolderPath={driveFolder?.path}
+        driveFolderPath={isGameSave ? autoGameDrivePath : driveFolder?.path}
         initialIgnoredPaths={ignoredPaths}
         onClose={() => setIsIgnoreModalOpen(false)}
         onSave={(paths) => {
