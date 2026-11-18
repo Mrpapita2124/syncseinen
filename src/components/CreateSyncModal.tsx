@@ -291,12 +291,12 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
             {/* Carátula / Cover Image Selector */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-2">
-                {tr('Sync Cover Image (Optional • Stored in metadata)', 'Carátula de la Sincronización (Opcional • Se guarda en la metadata)')}
+                {tr('Sync Cover Image', 'Carátula de la Sincronización')}
               </label>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col items-center justify-center gap-2.5">
                 <div
                   onClick={() => !isCreating && handlePickCover()}
-                  className="relative w-28 h-20 rounded-2xl overflow-hidden liquid-glass-sub flex items-center justify-center cursor-pointer group border border-dashed border-sky-400/40 flex-shrink-0"
+                  className="relative w-56 h-40 rounded-2xl overflow-hidden liquid-glass-sub flex items-center justify-center cursor-pointer group border border-dashed border-sky-400/40 flex-shrink-0"
                 >
                   {coverImage ? (
                     <>
@@ -306,47 +306,28 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                         className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                       />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                        <ImagePlus className="w-5 h-5 text-white" />
+                        <ImagePlus className="w-8 h-8 text-white" />
                       </div>
                     </>
                   ) : (
-                    <div className="flex flex-col items-center justify-center text-sky-400/80 gap-1">
-                      <ImagePlus className="w-5 h-5" />
-                      <span className="text-[10px] font-medium">{tr('Choose image', 'Elegir imagen')}</span>
+                    <div className="flex flex-col items-center justify-center text-sky-400/80 gap-2">
+                      <ImagePlus className="w-8 h-8" />
+                      <span className="text-xs font-semibold">{tr('Choose image', 'Elegir imagen')}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="flex-1 space-y-1.5">
-                  <p className="text-xs liquid-text-secondary leading-relaxed">
-                    {tr(
-                      `Pick a representative image (game, project, folder). Attached directly to ${providerLabel} metadata so it appears on all your devices.`,
-                      `Escoge una imagen representativa (juego, proyecto, carpeta). Se adjunta directamente a la metadata en ${providerLabel} para que se vea en todos tus dispositivos.`
-                    )}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={isCreating}
-                      onClick={handlePickCover}
-                      className="px-3 py-1.5 rounded-xl liquid-glass text-xs font-semibold text-sky-400 hover:opacity-90 flex items-center gap-1.5 transition"
-                    >
-                      <ImagePlus className="w-3.5 h-3.5" />
-                      {coverImage ? tr('Change cover', 'Cambiar carátula') : tr('Upload cover', 'Subir carátula')}
-                    </button>
-                    {coverImage && (
-                      <button
-                        type="button"
-                        disabled={isCreating}
-                        onClick={() => setCoverImage(null)}
-                        className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 text-xs font-medium flex items-center gap-1 transition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        {tr('Remove', 'Quitar')}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                {coverImage && (
+                  <button
+                    type="button"
+                    disabled={isCreating}
+                    onClick={() => setCoverImage(null)}
+                    className="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 text-xs font-medium flex items-center gap-1 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {tr('Remove', 'Quitar')}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -411,10 +392,7 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider liquid-text-muted mb-1.5">
-                {tr(`3. Folder in ${providerLabel}`, `3. Carpeta en ${providerLabel}`)}{' '}
-                {isGameSave
-                  ? tr('(Automatic for games)', '(Automática para videojuegos)')
-                  : tr('(Destination where rclone will store files)', '(Destino donde rclone guardará los archivos)')}
+                {tr(`3. Folder in ${providerLabel}`, `3. Carpeta en ${providerLabel}`)}
               </label>
 
               {isGameSave ? (
@@ -490,13 +468,6 @@ export const CreateSyncModal: React.FC<CreateSyncModalProps> = ({
                       )}
                     </div>
                   )}
-
-                  <p className="text-xs liquid-text-muted mt-2 leading-relaxed">
-                    {tr(
-                      'Files will sync via rclone into the chosen folder, while metadata and cover are stored in _SyncSeinen_Metadata.',
-                      'Los archivos se sincronizarán vía rclone en la carpeta elegida, mientras que en _SyncSeinen_Metadata se guardará la metadata y la carátula.'
-                    )}
-                  </p>
                 </>
               )}
             </div>

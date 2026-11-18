@@ -148,12 +148,6 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
               <h3 className="text-base font-extrabold liquid-text-primary">
                 {tr('Online Image Search', 'Buscador de Imágenes Online')}
               </h3>
-              <p className="text-[11px] liquid-text-muted">
-                {tr(
-                  'Type to search DuckDuckGo Images or choose a photo from your PC',
-                  'Escribe para buscar en DuckDuckGo Images o elige una foto desde tu PC'
-                )}
-              </p>
             </div>
           </div>
           <button
@@ -270,18 +264,8 @@ export const CoverPickerModal: React.FC<CoverPickerModalProps> = ({
           )}
         </div>
 
-        {/* Footer: Left status + Right buttons ("Subir foto local" to the left of "Aceptar") */}
-        <div className="px-6 py-4 liquid-glass-sub border-x-0 border-b-0 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs liquid-text-muted truncate max-w-[230px]">
-            {selectedItem ? (
-              <span className="text-emerald-300 font-semibold">
-                {tr('✓ Selected image ready to apply', '✓ Imagen seleccionada lista para aplicar')}
-              </span>
-            ) : (
-              <span>{tr('Select an image or upload from your PC', 'Selecciona una imagen o sube una de tu PC')}</span>
-            )}
-          </div>
-
+        {/* Footer: Right buttons ("Subir foto local" to the left of "Aceptar") */}
+        <div className="px-6 py-4 liquid-glass-sub border-x-0 border-b-0 flex flex-wrap items-center justify-end gap-3">
           <div className="flex items-center gap-2.5 ml-auto">
             {/* Botón de subir foto local a la izquierda del botón de Aceptar */}
             <button

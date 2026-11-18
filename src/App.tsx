@@ -20,6 +20,7 @@ import {
   List,
   Loader2,
   LogOut,
+  Pencil,
   Plus,
   RefreshCw,
   Rocket,
@@ -28,6 +29,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  User,
   X,
   XCircle,
 } from 'lucide-react'
@@ -136,6 +138,7 @@ export const App: React.FC = () => {
   const [createModalProvider, setCreateModalProvider] = useState<CloudProvider>('gdrive')
   const [editingIgnoreSync, setEditingIgnoreSync] = useState<SyncMetadata | null>(null)
   const [editingCoverSync, setEditingCoverSync] = useState<SyncMetadata | null>(null)
+  const [editingGameSyncId, setEditingGameSyncId] = useState<string | null>(null)
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [activeSection, setActiveSection] = useState<'files' | 'games'>('files')
@@ -1021,6 +1024,9 @@ export const App: React.FC = () => {
   }
 
   const showOnboardingLoginView = !hasEnteredDashboard || !isAuthenticated
+  const editingGameSync = editingGameSyncId
+    ? metadatas.find((m) => m.id === editingGameSyncId) || null
+    : null
   const sectionMetadatas = metadatas.filter(
     (m) => Boolean(m.isGameSave) === (activeSection === 'games')
   )
@@ -1048,7 +1054,7 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className={`min-h-screen flex flex-col relative overflow-x-hidden ${
+      className={`h-screen overflow-hidden flex relative ${
         theme === 'flat-red' ? 'theme-flat-red' : theme === 'material' ? 'theme-material' : 'theme-liquid'
       }`}
     >
@@ -1068,32 +1074,137 @@ export const App: React.FC = () => {
         />
       </div>
 
-      {/* Top Navbar */}
-      <header className="liquid-glass border-x-0 border-t-0 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
+      {/* Zen Browser-style Left Sidebar (fixed, non-scrolling) */}
+      <aside
+        className={`w-60 flex-shrink-0 h-full z-30 flex flex-col justify-between p-4 border-r ${
+          theme === 'flat-red'
+            ? 'bg-[#101013] border-zinc-800'
+            : 'liquid-glass border-t-0 border-b-0 border-l-0 border-white/15'
+        }`}
+      >
+        <div className="space-y-6">
+          {/* Top: Logo + SyncSeinen */}
+          <div className="flex items-center gap-3 px-2 pt-1">
             <img
               src="./app-icon.png"
               alt="SyncSeinen"
-              className="w-11 h-11 rounded-2xl object-cover shadow-lg border border-white/20"
+              className="w-10 h-10 rounded-2xl object-cover shadow-lg border border-white/20 flex-shrink-0"
             />
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-extrabold tracking-tight liquid-text-primary">
-                  SyncSeinen
-                </h1>
-              </div>
-              <p className="text-xs liquid-text-muted">
-                {tr(
-                  'Multi-cloud sync (Google Drive, Dropbox & OneDrive) • Rclone Engine',
-                  'Sincronización multi-nube (Google Drive, Dropbox y OneDrive) • Motor Rclone'
-                )}
+            <div className="min-w-0">
+              <h1 className="text-base font-extrabold tracking-tight liquid-text-primary truncate">
+                SyncSeinen
+              </h1>
+              <p className="text-[11px] liquid-text-muted font-mono truncate">
+                v{config?.appVersion || '1.5.0'}
               </p>
             </div>
           </div>
 
-          {/* Right Controls: Update Notification + Device Name + Connected Services + Gear Button */}
-          <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Sections: Syncs & Games */}
+          <nav className="space-y-1.5">
+            <button
+              type="button"
+              disabled={!isAuthenticated}
+              onClick={() => {
+                setIsSettingsMenuOpen(false)
+                setEditingGameSyncId(null)
+                setActiveSection('files')
+                if (isAuthenticated) setHasEnteredDashboard(true)
+              }}
+              className={`w-full px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-3 transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                !isSettingsMenuOpen && !showOnboardingLoginView && activeSection === 'files'
+                  ? theme === 'flat-red'
+                    ? 'bg-red-600 text-white shadow-lg shadow-red-600/20'
+                    : 'liquid-glass-sub border border-sky-400/50 text-sky-300 shadow'
+                  : 'liquid-text-secondary hover:bg-white/10 hover:liquid-text-primary'
+              }`}
+            >
+              <FolderSync className="w-4 h-4 text-sky-400 flex-shrink-0" />
+              <span className="truncate">{tr('Syncs', 'Sincronizaciones')}</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={!isAuthenticated}
+              onClick={() => {
+                setIsSettingsMenuOpen(false)
+                setEditingGameSyncId(null)
+                setActiveSection('games')
+                if (isAuthenticated) setHasEnteredDashboard(true)
+              }}
+              className={`w-full px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-3 transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                !isSettingsMenuOpen && !showOnboardingLoginView && activeSection === 'games'
+                  ? theme === 'flat-red'
+                    ? 'bg-red-600 text-white shadow-lg shadow-red-600/20'
+                    : 'liquid-glass-sub border border-emerald-400/50 text-emerald-300 shadow'
+                  : 'liquid-text-secondary hover:bg-white/10 hover:liquid-text-primary'
+              }`}
+            >
+              <Gamepad2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span className="truncate">{tr('Games', 'Juegos')}</span>
+            </button>
+          </nav>
+        </div>
+
+        {/* Bottom of Sidebar: User (Sessions) on bottom-left, Gear (Settings) on bottom-right */}
+        <div
+          className={`pt-3 border-t flex items-center justify-between gap-2 ${
+            theme === 'flat-red' ? 'border-zinc-800' : 'border-white/15'
+          }`}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setIsSettingsMenuOpen(false)
+              setEditingGameSyncId(null)
+              setHasEnteredDashboard(false)
+            }}
+            title={tr('Cloud sessions (sign in / sign out)', 'Sesiones en la nube (iniciar / cerrar sesión)')}
+            className={`relative w-10 h-10 rounded-2xl flex items-center justify-center transition ${
+              !isSettingsMenuOpen && showOnboardingLoginView
+                ? theme === 'flat-red'
+                  ? 'bg-red-600 text-white shadow'
+                  : 'liquid-glass-sub border border-sky-400/60 text-sky-300 shadow'
+                : 'liquid-glass-sub hover:bg-white/10 liquid-text-primary'
+            }`}
+          >
+            <User className="w-5 h-5" />
+            {activeProviders.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 text-[9px] font-extrabold text-slate-950 flex items-center justify-center shadow">
+                {activeProviders.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setEditingGameSyncId(null)
+              setIsSettingsMenuOpen(true)
+            }}
+            title={tr('Settings', 'Configuración')}
+            className={`w-10 h-10 rounded-2xl flex items-center justify-center transition ${
+              isSettingsMenuOpen
+                ? theme === 'flat-red'
+                  ? 'bg-red-600 text-white shadow'
+                  : 'liquid-glass-sub border border-sky-400/60 text-sky-300 shadow'
+                : 'liquid-glass-sub hover:bg-white/10 liquid-text-primary'
+            }`}
+          >
+            <Settings
+              className={`w-5 h-5 transition-transform duration-300 ${
+                isSettingsMenuOpen ? 'rotate-90' : ''
+              }`}
+            />
+          </button>
+        </div>
+      </aside>
+
+      {/* Right Content Column (ONLY this column scrolls) */}
+      <div className="flex-1 min-w-0 h-full overflow-y-auto flex flex-col relative z-10">
+        {/* Compact Top Bar */}
+        <header className="liquid-glass border-x-0 border-t-0 sticky top-0 z-20">
+          <div className="max-w-6xl mx-auto px-6 py-3 flex flex-wrap items-center justify-end gap-2.5">
             {updateInfo?.hasUpdate && (
               <button
                 type="button"
@@ -1135,322 +1246,8 @@ export const App: React.FC = () => {
                 </button>
               )}
             </div>
-
-            {activeProviders.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setIsSettingsMenuOpen(true)}
-                className="flex items-center gap-2 liquid-glass-sub rounded-2xl px-3.5 py-1.5 hover:opacity-90 transition"
-                title={tr('Open menu to manage connected services', 'Abrir menú para gestionar servicios conectados')}
-              >
-                <Cloud className="w-4 h-4 text-sky-400" />
-                <span className="text-xs liquid-text-primary font-semibold">
-                  {activeProviders.length}{' '}
-                  {activeProviders.length === 1
-                    ? tr('Active Service', 'Servicio Activo')
-                    : tr('Active Services', 'Servicios Activos')}
-                </span>
-              </button>
-            )}
-
-            {/* Botón de engrane que abre el menú sobrepuesto estilo pausa de videojuego */}
-            <button
-              type="button"
-              onClick={() => setIsSettingsMenuOpen(true)}
-              title={tr('Open Settings Menu', 'Abrir Menú de Configuración')}
-              className="w-10 h-10 rounded-2xl liquid-glass-sub hover:bg-white/10 flex items-center justify-center liquid-text-primary transition"
-            >
-              <Settings
-                className={`w-5 h-5 transition-transform duration-300 ${
-                  isSettingsMenuOpen ? 'rotate-90 text-sky-400' : ''
-                }`}
-              />
-            </button>
           </div>
-        </div>
-      </header>
-
-      {/* Menú Sobrepuesto de Configuración (Estilo Pausa de Videojuego) */}
-      {isSettingsMenuOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsSettingsMenuOpen(false)
-          }}
-        >
-          <div
-            className={`w-full max-w-3xl rounded-3xl overflow-hidden flex flex-col max-h-[90vh] ${
-              theme === 'flat-red'
-                ? 'bg-[#121215] border-2 border-red-600 shadow-2xl'
-                : 'liquid-glass-modal shadow-2xl border border-sky-400/35'
-            }`}
-          >
-            {/* Header del Menú de Pausa */}
-            <div className="px-7 py-5 border-b border-white/15 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className={`p-2.5 rounded-2xl ${
-                    theme === 'flat-red'
-                      ? 'bg-red-600/20 border border-red-500 text-red-400'
-                      : 'bg-sky-500/20 border border-sky-400/40 text-sky-400'
-                  }`}
-                >
-                  <Settings className="w-6 h-6" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] liquid-text-muted block">
-                    {tr('SYSTEM MENU', 'MENÚ DEL SISTEMA')}
-                  </span>
-                  <h2 className="text-xl font-black tracking-tight liquid-text-primary">
-                    {tr('Settings & Cloud Services', 'Configuración y Servicios en la Nube')}
-                  </h2>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsSettingsMenuOpen(false)}
-                className="px-4 py-2 rounded-2xl liquid-glass-sub hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition"
-              >
-                <X className="w-4 h-4" />
-                {tr('Resume', 'Reanudar')}
-              </button>
-            </div>
-
-            {/* Cuerpo del Menú Sobrepuesto */}
-            <div className="p-7 space-y-6 overflow-y-auto">
-              {/* Sección 1: Servicios en la Nube en vista de FILAS */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-extrabold uppercase tracking-wider liquid-text-primary">
-                      {tr('1. Linked Cloud Services', '1. Servicios en la Nube Vinculados')}
-                    </h3>
-                    <p className="text-xs liquid-text-muted mt-0.5">
-                      {tr(
-                        'Sign in or disconnect your Google Drive, Dropbox, and OneDrive accounts.',
-                        'Inicia sesión o desconecta tus cuentas de Google Drive, Dropbox y OneDrive.'
-                      )}
-                    </p>
-                  </div>
-                  <span className="text-xs font-bold px-3 py-1 rounded-full liquid-glass-sub liquid-text-secondary">
-                    {tr(`${activeProviders.length} of 3 active`, `${activeProviders.length} de 3 activos`)}
-                  </span>
-                </div>
-
-                {renderServicesRowsList()}
-              </div>
-
-              <div
-                className={`border-t ${
-                  theme === 'flat-red' ? 'border-zinc-800' : 'border-white/10'
-                }`}
-              />
-
-              {/* Sección 2 y 3: Comportamiento al cerrar y Selector de Temas con Muestra de Colores */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Opción: Al cerrar la aplicación */}
-                <div className="space-y-2.5">
-                  <span className="block text-xs font-extrabold uppercase tracking-wider liquid-text-primary">
-                    {tr('2. When closing the app', '2. Al cerrar la aplicación')}
-                  </span>
-                  <p className="text-xs liquid-text-muted">
-                    {tr(
-                      'Choose whether SyncSeinen stays running in the background or quits completely.',
-                      'Elige si SyncSeinen permanece activo en segundo plano o se cierra por completo.'
-                    )}
-                  </p>
-                  <div className="space-y-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleChangeCloseBehavior('tray')}
-                      className={`w-full px-4 py-3 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
-                        closeBehavior === 'tray'
-                          ? theme === 'flat-red'
-                            ? 'bg-red-600 text-white border border-red-500'
-                            : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
-                          : theme === 'flat-red'
-                            ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
-                            : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
-                      }`}
-                    >
-                      <span>{tr('Keep in background (Tray)', 'Quedarse en segundo plano (Bandeja)')}</span>
-                      {closeBehavior === 'tray' && <Check className="w-4 h-4" />}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleChangeCloseBehavior('quit')}
-                      className={`w-full px-4 py-3 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
-                        closeBehavior === 'quit'
-                          ? theme === 'flat-red'
-                            ? 'bg-red-600 text-white border border-red-500'
-                            : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
-                          : theme === 'flat-red'
-                            ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
-                            : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
-                      }`}
-                    >
-                      <span>{tr('Quit completely', 'Cerrarse por completo')}</span>
-                      {closeBehavior === 'quit' && <Check className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Opción: Selector de Temas como Botones con Muestra Visual de Colores */}
-                <div className="space-y-2.5">
-                  <span className="block text-xs font-extrabold uppercase tracking-wider liquid-text-primary">
-                    {tr('3. Visual theme', '3. Tema visual')}
-                  </span>
-                  <p className="text-xs liquid-text-muted">
-                    {tr('Select the app visual style:', 'Selecciona el estilo visual de la aplicación:')}
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                    {/* Botón Tema 1: Cristal Líquido */}
-                    <button
-                      type="button"
-                      onClick={() => handleChangeTheme('liquid')}
-                      className={`p-3 rounded-2xl flex flex-col items-center gap-2.5 border transition ${
-                        theme === 'liquid'
-                          ? 'liquid-glass-sub border-sky-400 text-sky-300 shadow-lg shadow-sky-500/15'
-                          : theme === 'flat-red'
-                            ? 'bg-[#18181c] border-zinc-800 text-zinc-300 hover:border-zinc-600'
-                            : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
-                      }`}
-                    >
-                      <div
-                        className="w-12 h-12 rounded-xl border border-white/25 shadow-md flex-shrink-0"
-                        style={{
-                          background:
-                            'linear-gradient(135deg, #38bdf8 0%, #6366f1 52%, #a855f7 100%)',
-                        }}
-                      />
-                      <div className="flex items-center gap-1.5 text-xs font-extrabold">
-                        <span>{tr('Liquid Glass', 'Cristal Líquido')}</span>
-                        {theme === 'liquid' && <Check className="w-3.5 h-3.5 text-sky-400" />}
-                      </div>
-                    </button>
-
-                    {/* Botón Tema 2: Negro y Rojo */}
-                    <button
-                      type="button"
-                      onClick={() => handleChangeTheme('flat-red')}
-                      className={`p-3 rounded-2xl flex flex-col items-center gap-2.5 border transition ${
-                        theme === 'flat-red'
-                          ? 'bg-[#18181c] border-red-500 text-white shadow-lg shadow-red-600/20'
-                          : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
-                      }`}
-                    >
-                      <div
-                        className="w-12 h-12 rounded-xl border border-white/25 shadow-md flex-shrink-0"
-                        style={{
-                          background:
-                            'linear-gradient(135deg, #09090b 0%, #09090b 49.5%, #dc2626 50.5%, #dc2626 100%)',
-                        }}
-                      />
-                      <div className="flex items-center gap-1.5 text-xs font-extrabold">
-                        <span>{tr('Black & Red', 'Negro y Rojo')}</span>
-                        {theme === 'flat-red' && <Check className="w-3.5 h-3.5 text-red-500" />}
-                      </div>
-                    </button>
-
-                    {/* Botón Tema 3: Material Expressive */}
-                    <button
-                      type="button"
-                      onClick={() => handleChangeTheme('material')}
-                      className={`p-3 rounded-2xl flex flex-col items-center gap-2.5 border transition ${
-                        theme === 'material'
-                          ? 'bg-[#361940] border-[#cf9fff] text-[#f7ebff]'
-                          : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
-                      }`}
-                    >
-                      <div
-                        className="w-12 h-12 rounded-2xl border border-[#cf9fff]/50 flex flex-col items-center justify-center gap-1 p-1.5 flex-shrink-0"
-                        style={{ backgroundColor: '#24102b' }}
-                      >
-                        <div className="w-full h-3 rounded-full" style={{ backgroundColor: '#cf9fff' }} />
-                        <div className="w-3/4 h-2.5 rounded-full self-end" style={{ backgroundColor: '#ff9e9d' }} />
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs font-extrabold">
-                        <span>Material</span>
-                        {theme === 'material' && <Check className="w-3.5 h-3.5 text-[#cf9fff]" />}
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                className={`border-t ${
-                  theme === 'flat-red' ? 'border-zinc-800' : 'border-white/10'
-                }`}
-              />
-
-              {/* Sección 4: Idioma / Language */}
-              <div className="space-y-2.5">
-                <span className="block text-xs font-extrabold uppercase tracking-wider liquid-text-primary">
-                  {tr('4. Language / Idioma', '4. Idioma / Language')}
-                </span>
-                <p className="text-xs liquid-text-muted">
-                  {tr('Choose the display language for SyncSeinen:', 'Elige el idioma de la interfaz de SyncSeinen:')}
-                </p>
-                <div className="grid grid-cols-2 gap-3 pt-1 max-w-sm">
-                  <button
-                    type="button"
-                    onClick={() => setLang('en')}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
-                      lang === 'en'
-                        ? theme === 'flat-red'
-                          ? 'bg-red-600 text-white border border-red-500'
-                          : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
-                        : theme === 'flat-red'
-                          ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
-                          : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
-                    }`}
-                  >
-                    <span>English</span>
-                    {lang === 'en' && <Check className="w-4 h-4" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLang('es')}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
-                      lang === 'es'
-                        ? theme === 'flat-red'
-                          ? 'bg-red-600 text-white border border-red-500'
-                          : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
-                        : theme === 'flat-red'
-                          ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
-                          : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
-                    }`}
-                  >
-                    <span>Español</span>
-                    {lang === 'es' && <Check className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer del Menú de Pausa */}
-            <div className="px-7 py-4 border-t border-white/15 flex items-center justify-between">
-              <span className="text-xs liquid-text-muted font-mono">
-                {config?.rcloneVersion || tr('Rclone engine active', 'Motor Rclone activo')}
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsSettingsMenuOpen(false)}
-                className={`px-6 py-2.5 rounded-2xl text-xs font-extrabold transition shadow-lg ${
-                  theme === 'flat-red'
-                    ? 'bg-red-600 hover:bg-red-500 text-white'
-                    : 'bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:to-emerald-400 text-white'
-                }`}
-              >
-                {tr('Back to SyncSeinen', 'Volver a SyncSeinen')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        </header>
 
       {/* Menú Sobrepuesto de Saves de Videojuegos (Estilo Pausa • SteamGridDB) */}
       {isGameScannerOpen && (
@@ -2131,9 +1928,228 @@ export const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-6 relative z-10">
-        {showOnboardingLoginView ? (
-          /* Vista de Inicio de Sesión Multi-Servicio */
-          <div className="max-w-4xl mx-auto mt-6 liquid-glass rounded-3xl p-8 text-center space-y-6">
+        {isSettingsMenuOpen ? (
+          /* Sección de Configuración (extendida a toda la vista) */
+          <div className="w-full space-y-6">
+            <div
+              className={`pb-5 border-b flex items-center gap-3 ${
+                theme === 'flat-red' ? 'border-zinc-800' : 'border-white/15'
+              }`}
+            >
+              <div
+                className={`p-2.5 rounded-2xl ${
+                  theme === 'flat-red'
+                    ? 'bg-red-600/20 border border-red-500 text-red-400'
+                    : 'bg-sky-500/20 border border-sky-400/40 text-sky-400'
+                }`}
+              >
+                <Settings className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] liquid-text-muted block">
+                  {tr('SYSTEM', 'SISTEMA')}
+                </span>
+                <h2 className="text-xl font-black tracking-tight liquid-text-primary">
+                  {tr('Settings', 'Configuración')}
+                </h2>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-2.5">
+                <span className="block text-xs font-extrabold uppercase tracking-wider liquid-text-primary">
+                  {tr('1. When closing the app', '1. Al cerrar la aplicación')}
+                </span>
+                <p className="text-xs liquid-text-muted">
+                  {tr(
+                    'Choose whether SyncSeinen stays running in the background or quits completely.',
+                    'Elige si SyncSeinen permanece activo en segundo plano o se cierra por completo.'
+                  )}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleChangeCloseBehavior('tray')}
+                    className={`w-full px-4 py-3 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
+                      closeBehavior === 'tray'
+                        ? theme === 'flat-red'
+                          ? 'bg-red-600 text-white border border-red-500'
+                          : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
+                        : theme === 'flat-red'
+                          ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
+                          : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
+                    }`}
+                  >
+                    <span>{tr('Keep in background (Tray)', 'Quedarse en segundo plano (Bandeja)')}</span>
+                    {closeBehavior === 'tray' && <Check className="w-4 h-4" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleChangeCloseBehavior('quit')}
+                    className={`w-full px-4 py-3 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
+                      closeBehavior === 'quit'
+                        ? theme === 'flat-red'
+                          ? 'bg-red-600 text-white border border-red-500'
+                          : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
+                        : theme === 'flat-red'
+                          ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
+                          : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
+                    }`}
+                  >
+                    <span>{tr('Quit completely', 'Cerrarse por completo')}</span>
+                    {closeBehavior === 'quit' && <Check className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className={`border-t ${
+                  theme === 'flat-red' ? 'border-zinc-800' : 'border-white/10'
+                }`}
+              />
+
+              <div className="space-y-2.5">
+                <span className="block text-xs font-extrabold uppercase tracking-wider liquid-text-primary">
+                  {tr('2. Visual theme', '2. Tema visual')}
+                </span>
+                <p className="text-xs liquid-text-muted">
+                  {tr('Select the app visual style:', 'Selecciona el estilo visual de la aplicación:')}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleChangeTheme('liquid')}
+                    className={`p-3 rounded-2xl flex flex-col items-center gap-2.5 border transition ${
+                      theme === 'liquid'
+                        ? 'liquid-glass-sub border-sky-400 text-sky-300 shadow-lg shadow-sky-500/15'
+                        : theme === 'flat-red'
+                          ? 'bg-[#18181c] border-zinc-800 text-zinc-300 hover:border-zinc-600'
+                          : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
+                    }`}
+                  >
+                    <div
+                      className="w-12 h-12 rounded-xl border border-white/25 shadow-md flex-shrink-0"
+                      style={{
+                        background:
+                          'linear-gradient(135deg, #38bdf8 0%, #6366f1 52%, #a855f7 100%)',
+                      }}
+                    />
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold">
+                      <span>{tr('Liquid Glass', 'Cristal Líquido')}</span>
+                      {theme === 'liquid' && <Check className="w-3.5 h-3.5 text-sky-400" />}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleChangeTheme('flat-red')}
+                    className={`p-3 rounded-2xl flex flex-col items-center gap-2.5 border transition ${
+                      theme === 'flat-red'
+                        ? 'bg-[#18181c] border-red-500 text-white shadow-lg shadow-red-600/20'
+                        : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
+                    }`}
+                  >
+                    <div
+                      className="w-12 h-12 rounded-xl border border-white/25 shadow-md flex-shrink-0"
+                      style={{
+                        background:
+                          'linear-gradient(135deg, #09090b 0%, #09090b 49.5%, #dc2626 50.5%, #dc2626 100%)',
+                      }}
+                    />
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold">
+                      <span>{tr('Black & Red', 'Negro y Rojo')}</span>
+                      {theme === 'flat-red' && <Check className="w-3.5 h-3.5 text-red-500" />}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleChangeTheme('material')}
+                    className={`p-3 rounded-2xl flex flex-col items-center gap-2.5 border transition ${
+                      theme === 'material'
+                        ? 'bg-[#361940] border-[#cf9fff] text-[#f7ebff]'
+                        : 'liquid-glass-sub border-white/10 liquid-text-secondary hover:bg-white/10'
+                    }`}
+                  >
+                    <div
+                      className="w-12 h-12 rounded-2xl border border-[#cf9fff]/50 flex flex-col items-center justify-center gap-1 p-1.5 flex-shrink-0"
+                      style={{ backgroundColor: '#24102b' }}
+                    >
+                      <div className="w-full h-3 rounded-full" style={{ backgroundColor: '#cf9fff' }} />
+                      <div className="w-3/4 h-2.5 rounded-full self-end" style={{ backgroundColor: '#ff9e9d' }} />
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold">
+                      <span>Material</span>
+                      {theme === 'material' && <Check className="w-3.5 h-3.5 text-[#cf9fff]" />}
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className={`border-t ${
+                  theme === 'flat-red' ? 'border-zinc-800' : 'border-white/10'
+                }`}
+              />
+
+              <div className="space-y-2.5">
+                <span className="block text-xs font-extrabold uppercase tracking-wider liquid-text-primary">
+                  {tr('3. Language / Idioma', '3. Idioma / Language')}
+                </span>
+                <p className="text-xs liquid-text-muted">
+                  {tr('Choose the display language for SyncSeinen:', 'Elige el idioma de la interfaz de SyncSeinen:')}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setLang('en')}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
+                      lang === 'en'
+                        ? theme === 'flat-red'
+                          ? 'bg-red-600 text-white border border-red-500'
+                          : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
+                        : theme === 'flat-red'
+                          ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
+                          : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
+                    }`}
+                  >
+                    <span>English</span>
+                    {lang === 'en' && <Check className="w-4 h-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLang('es')}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center justify-between transition ${
+                      lang === 'es'
+                        ? theme === 'flat-red'
+                          ? 'bg-red-600 text-white border border-red-500'
+                          : 'liquid-glass-sub text-sky-400 border border-sky-400/50'
+                        : theme === 'flat-red'
+                          ? 'bg-[#18181c] text-zinc-300 border border-zinc-800 hover:border-red-500/60 hover:text-white'
+                          : 'liquid-glass-sub liquid-text-secondary hover:bg-white/10'
+                    }`}
+                  >
+                    <span>Español</span>
+                    {lang === 'es' && <Check className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className={`pt-4 border-t flex items-center justify-between ${
+                theme === 'flat-red' ? 'border-zinc-800' : 'border-white/15'
+              }`}
+            >
+              <span className="text-xs liquid-text-muted font-mono">
+                {config?.rcloneVersion || tr('Rclone engine active', 'Motor Rclone activo')}
+              </span>
+            </div>
+          </div>
+        ) : showOnboardingLoginView ? (
+          /* Vista de Inicio de Sesión Multi-Servicio (extendida a toda la vista) */
+          <div className="w-full py-2 text-center space-y-6">
             <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-sky-400/20 to-indigo-500/20 border border-sky-400/40 text-sky-400 flex items-center justify-center mx-auto shadow-lg shadow-sky-500/15">
               <Cloud className="w-8 h-8" />
             </div>
@@ -2184,6 +2200,345 @@ export const App: React.FC = () => {
               </span>
             </div>
           </div>
+        ) : editingGameSync ? (
+          /* Pantalla de edición individual de un videojuego */
+          (() => {
+            const localMapping = config?.localMappings[editingGameSync.id]
+            const isLinked = Boolean(localMapping?.localPath)
+            const autoMatch = !isLinked ? autoSaveMatches[editingGameSync.id] : undefined
+            const effectiveIgnored = Array.from(
+              new Set([
+                ...(editingGameSync.ignoredPaths || []),
+                ...(localMapping?.ignoredPaths || []),
+              ])
+            )
+            const pInfo = PROVIDER_META[editingGameSync.provider || 'gdrive']
+            const isThisBusy =
+              busyAction === `push-${editingGameSync.id}` ||
+              busyAction === `pull-${editingGameSync.id}` ||
+              busyAction === `assign-${editingGameSync.id}` ||
+              busyAction === `delete-${editingGameSync.id}` ||
+              busyAction === `ignore-${editingGameSync.id}` ||
+              busyAction === `cover-${editingGameSync.id}`
+
+            return (
+              <div className="max-w-4xl mx-auto mt-2 liquid-glass rounded-3xl overflow-hidden flex flex-col">
+                {/* Header con botón de ir para atrás */}
+                <div className="px-7 py-5 border-b border-white/15 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingGameSyncId(null)}
+                      className="px-3.5 py-2 rounded-2xl liquid-glass-sub hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition flex-shrink-0"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      {tr('Back', 'Atrás')}
+                    </button>
+
+                    <div className="w-11 h-11 rounded-2xl overflow-hidden bg-slate-900/60 border border-white/15 flex items-center justify-center flex-shrink-0">
+                      {editingGameSync.coverImage ? (
+                        <img
+                          src={editingGameSync.coverImage}
+                          alt={editingGameSync.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : editingGameSync.isGameSave ? (
+                        <Gamepad2 className="w-5 h-5 text-emerald-400" />
+                      ) : (
+                        <FolderSync className="w-5 h-5 text-sky-400" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] liquid-text-muted block">
+                        {editingGameSync.isGameSave
+                          ? tr('GAME OPTIONS', 'OPCIONES DEL JUEGO')
+                          : tr('SYNC OPTIONS', 'OPCIONES DE SINCRONIZACIÓN')}
+                      </span>
+                      <h2 className="text-xl font-black tracking-tight liquid-text-primary truncate">
+                        {editingGameSync.name}
+                      </h2>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`text-xs font-bold px-3 py-1 rounded-full bg-gradient-to-r border ${pInfo.badgeColor}`}
+                  >
+                    {pInfo.label}
+                  </span>
+                </div>
+
+                {/* Cuerpo de opciones del juego */}
+                <div className="p-7 space-y-6">
+                  {/* Carátula + Resumen */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="liquid-glass-sub rounded-2xl p-4 flex flex-col items-center justify-between gap-3">
+                      <div className="w-full h-32 rounded-xl overflow-hidden bg-slate-950/60 border border-white/10 flex items-center justify-center">
+                        {editingGameSync.coverImage ? (
+                          <img
+                            src={editingGameSync.coverImage}
+                            alt={editingGameSync.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : editingGameSync.isGameSave ? (
+                          <Gamepad2 className="w-10 h-10 text-emerald-400/60" />
+                        ) : (
+                          <FolderSync className="w-10 h-10 text-sky-400/60" />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 w-full">
+                        <button
+                          type="button"
+                          disabled={Boolean(busyAction)}
+                          onClick={() => handleChangeCoverForSync(editingGameSync)}
+                          className="flex-1 px-3 py-2 rounded-xl liquid-glass hover:bg-white/10 liquid-text-primary text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                        >
+                          <ImagePlus className="w-3.5 h-3.5 text-sky-400" />
+                          {editingGameSync.coverImage
+                            ? tr('Change cover', 'Cambiar carátula')
+                            : tr('Add cover', 'Agregar carátula')}
+                        </button>
+                        {editingGameSync.coverImage && (
+                          <button
+                            type="button"
+                            disabled={Boolean(busyAction)}
+                            onClick={() => handleRemoveCoverForSync(editingGameSync)}
+                            className="p-2 rounded-xl liquid-glass hover:bg-rose-500/20 text-rose-400 transition"
+                            title={tr('Remove cover', 'Quitar carátula')}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="liquid-glass-sub rounded-2xl p-4 sm:col-span-2">
+                        <span className="liquid-text-muted block text-[11px] font-semibold uppercase tracking-wider">
+                          {tr(`Cloud Path (${pInfo.label})`, `Ruta en la nube (${pInfo.label})`)}
+                        </span>
+                        <span className="text-sky-400 font-semibold font-mono text-xs flex items-center gap-1.5 mt-1 break-all">
+                          <Cloud className="w-4 h-4 flex-shrink-0" />/{editingGameSync.driveFolderPath}
+                        </span>
+                      </div>
+
+                      <div className="liquid-glass-sub rounded-2xl p-4">
+                        <span className="liquid-text-muted block text-[11px] font-semibold uppercase tracking-wider">
+                          {tr('Last Push', 'Último Push')}
+                        </span>
+                        <span className="text-emerald-400 font-bold text-sm flex items-center gap-1.5 mt-1 truncate">
+                          <Laptop className="w-4 h-4 flex-shrink-0" />
+                          {editingGameSync.lastPushedByDevice || editingGameSync.createdByDevice || 'N/A'}
+                        </span>
+                      </div>
+
+                      <div className="liquid-glass-sub rounded-2xl p-4">
+                        <span className="liquid-text-muted block text-[11px] font-semibold uppercase tracking-wider">
+                          {tr('Files / Date', 'Archivos / Fecha')}
+                        </span>
+                        <span className="liquid-text-primary font-semibold text-sm block mt-1 truncate">
+                          {editingGameSync.lastPushedFileCount} {tr('files', 'arch.')} &bull;{' '}
+                          {formatDate(editingGameSync.lastPushedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ruta Local y Opciones */}
+                  {isLinked ? (
+                    <div className="liquid-glass-sub rounded-2xl p-5 space-y-4">
+                      <div className="space-y-1">
+                        <span className="liquid-text-muted block text-[11px] font-semibold uppercase tracking-wider">
+                          {tr('Local path on this PC', 'Ruta local en esta PC')}
+                        </span>
+                        <div className="flex items-center gap-2 text-xs min-w-0 bg-black/25 rounded-xl px-3 py-2.5 border border-white/10">
+                          <HardDrive className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                          <code className="liquid-text-primary font-mono break-all">
+                            {localMapping?.localPath}
+                          </code>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => window.syncApi.openLocalPath(localMapping!.localPath)}
+                          className="px-4 py-2 rounded-xl liquid-glass hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                          <FolderOpen className="w-4 h-4 text-sky-400" />
+                          {tr('Open', 'Abrir')}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAssignLocalFolderAndPull(editingGameSync, false)}
+                          disabled={Boolean(busyAction)}
+                          className="px-4 py-2 rounded-xl liquid-glass hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                          <HardDrive className="w-4 h-4 text-indigo-400" />
+                          {tr('Path', 'Ruta')}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setEditingIgnoreSync(editingGameSync)}
+                          disabled={Boolean(busyAction)}
+                          className="px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/30 text-amber-400 text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                          <EyeOff className="w-4 h-4" />
+                          {tr('Ignore', 'Ignorar')} ({effectiveIgnored.length})
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleUnlinkLocal(editingGameSync)}
+                          disabled={Boolean(busyAction)}
+                          className="px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/30 text-rose-400 text-xs font-bold flex items-center gap-1.5 transition ml-auto"
+                        >
+                          <Link2Off className="w-4 h-4" />
+                          {tr('Unlink from this PC', 'Desvincular de esta PC')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : autoMatch ? (
+                    <div className="liquid-glass-sub rounded-2xl p-5 space-y-3 border border-emerald-400/35">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4" />
+                          {tr('Path detected on this PC:', 'Ruta detectada en esta PC:')}
+                        </span>
+                        {autoMatch.emulatorName && (
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                            {autoMatch.emulatorName}
+                          </span>
+                        )}
+                      </div>
+                      <code className="block text-xs liquid-text-secondary font-mono break-all bg-black/25 px-3 py-2 rounded-xl">
+                        {autoMatch.localPath}
+                      </code>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleAutoPullWithDetectedPath(editingGameSync, autoMatch)}
+                          disabled={Boolean(busyAction)}
+                          className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 transition shadow"
+                        >
+                          <ArrowDownToLine className="w-4 h-4" />
+                          {tr('Auto sync', 'Sincronizar automático')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAssignLocalFolderAndPull(editingGameSync, true)}
+                          disabled={Boolean(busyAction)}
+                          className="px-4 py-2 rounded-xl liquid-glass hover:bg-white/10 liquid-text-primary text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                          <FolderOpen className="w-4 h-4" />
+                          {tr('Pick path manually', 'Elegir ruta manualmente')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="liquid-glass-sub rounded-2xl p-5 space-y-3 border border-amber-400/30">
+                      <span className="text-xs font-bold text-amber-400 block">
+                        {tr('Assign local path on this PC', 'Asignar ruta local en esta PC')}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={manualPathInputs[editingGameSync.id] || ''}
+                          onChange={(e) =>
+                            setManualPathInputs((prev) => ({
+                              ...prev,
+                              [editingGameSync.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="C:\path\to\save..."
+                          className="flex-1 min-w-0 liquid-glass rounded-xl px-3 py-2 text-xs font-mono liquid-text-primary focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleBrowseManualPath(editingGameSync)}
+                          disabled={Boolean(busyAction)}
+                          className="px-3 py-2 rounded-xl liquid-glass hover:bg-white/10 text-sky-400 text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                          <FolderOpen className="w-4 h-4" />
+                          {tr('Browse', 'Examinar')}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleLinkManualPathAndPull(editingGameSync, true)}
+                          disabled={Boolean(busyAction)}
+                          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition"
+                        >
+                          <ArrowDownToLine className="w-4 h-4" />
+                          {tr('Link & Pull', 'Vincular y Pull')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLinkManualPathAndPull(editingGameSync, false)}
+                          disabled={Boolean(busyAction)}
+                          className="px-4 py-2 rounded-xl liquid-glass liquid-text-primary text-xs font-bold transition"
+                        >
+                          {tr('Assign path only', 'Solo asignar ruta')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer de acciones rápidas y eliminar */}
+                <div className="px-7 py-4 border-t border-white/15 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    {isLinked && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handlePullOne(editingGameSync)}
+                          disabled={Boolean(busyAction)}
+                          className="px-5 py-2.5 rounded-2xl bg-sky-500/20 hover:bg-sky-500 border border-sky-400/40 text-sky-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                          {busyAction === `pull-${editingGameSync.id}` ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <ArrowDownToLine className="w-4 h-4" />
+                          )}
+                          Pull
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handlePushOne(editingGameSync)}
+                          disabled={Boolean(busyAction)}
+                          className="px-5 py-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500 border border-emerald-400/40 text-emerald-400 hover:text-white disabled:opacity-40 text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                          {busyAction === `push-${editingGameSync.id}` ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <ArrowUpFromLine className="w-4 h-4" />
+                          )}
+                          Push
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSyncMetadata(editingGameSync)}
+                    disabled={Boolean(busyAction) || isThisBusy}
+                    className="px-4 py-2.5 rounded-2xl bg-rose-500/15 hover:bg-rose-500/30 border border-rose-400/30 text-rose-400 text-xs font-bold flex items-center gap-1.5 transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {editingGameSync.isGameSave
+                      ? tr('Delete game', 'Eliminar juego')
+                      : tr('Delete sync', 'Eliminar sincronización')}
+                  </button>
+                </div>
+              </div>
+            )
+          })()
         ) : (
           /* Vista de Sincronizaciones Dividida en 2: Archivos Normales y Saves de Juegos */
           <div className="space-y-8">
@@ -2199,23 +2554,7 @@ export const App: React.FC = () => {
                   ) : (
                     <span>{tr('Regular Files by Service', 'Archivos Normales por Servicio')}</span>
                   )}
-                  <span className="text-xs px-3 py-0.5 rounded-full liquid-glass-sub liquid-text-secondary font-semibold">
-                    {activeProviders.length} {tr('active service(s)', 'servicio(s) activo(s)')} &bull; {sectionMetadatas.length} {tr('sync(s)', 'sync(s)')}
-                  </span>
                 </h2>
-                <p className="text-xs liquid-text-muted mt-1">
-                  {activeSection === 'games' ? (
-                    <>
-                      {tr('Automatic backup of PC, emulator and port saves in ', 'Respaldo automático de partidas de PC, emuladores y ports en ')}
-                      <code className="text-sky-400 font-mono">SyncSeinen_games_saves</code>{' '}
-                      {tr('with SteamGridDB covers.', 'con carátulas de SteamGridDB.')}
-                    </>
-                  ) : (
-                    <>
-                      {tr('Each service has its own Pull and Push buttons. You can add more accounts from the gear menu.', 'Cada servicio tiene sus propios botones de Pull y Push. Puedes agregar más cuentas desde el botón de engrane.')}
-                    </>
-                  )}
-                </p>
               </div>
 
               <div className="flex items-center gap-2.5 flex-wrap">
@@ -2257,39 +2596,6 @@ export const App: React.FC = () => {
                 >
                   <RefreshCw className={`w-4 h-4 ${loadingSyncs ? 'animate-spin text-sky-400' : ''}`} />
                   {tr('Refresh all', 'Actualizar todo')}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveSection((prev) => (prev === 'files' ? 'games' : 'files'))
-                  }
-                  className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 border transition shadow-md ${
-                    activeSection === 'games'
-                      ? theme === 'flat-red'
-                        ? 'bg-[#18181c] border-red-500 text-red-400 hover:bg-red-600 hover:text-white'
-                        : 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300 hover:bg-emerald-500/30'
-                      : theme === 'flat-red'
-                        ? 'bg-[#18181c] border-zinc-700 text-white hover:border-red-500'
-                        : 'liquid-glass-sub border-sky-400/40 text-sky-300 hover:bg-white/10'
-                  }`}
-                  title={
-                    activeSection === 'files'
-                      ? tr('Go to Game Saves section', 'Ir al apartado de Saves de Videojuegos')
-                      : tr('Back to Regular Files section', 'Volver al apartado de Archivos Normales')
-                  }
-                >
-                  {activeSection === 'files' ? (
-                    <>
-                      <Gamepad2 className="w-4 h-4 text-emerald-400" />
-                      <span>{tr('Game Saves', 'Saves de Juegos')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <FolderSync className="w-4 h-4 text-sky-400" />
-                      <span>{tr('Regular Files', 'Archivos Normales')}</span>
-                    </>
-                  )}
                 </button>
 
                 <button
@@ -2554,39 +2860,10 @@ export const App: React.FC = () => {
                                             {tr('Pending Pull', 'Pendiente de Pull')}
                                           </span>
                                         )}
-                                        {isLinked ? (
-                                          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md text-emerald-300 border border-emerald-400/40 flex items-center gap-1 shadow">
-                                            <Link2 className="w-3 h-3" />
-                                            {tr('Linked', 'Vinculada')}
-                                          </span>
-                                        ) : (
+                                        {!isLinked && (
                                           <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-md text-amber-300 border border-amber-400/40 shadow">
                                             {tr('Not linked on PC', 'Sin vincular en PC')}
                                           </span>
-                                        )}
-                                      </div>
-
-                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                                        <button
-                                          type="button"
-                                          disabled={Boolean(busyAction)}
-                                          onClick={() => handleChangeCoverForSync(sync)}
-                                          className="px-2.5 py-1 rounded-full bg-black/65 hover:bg-black/85 backdrop-blur-md text-white text-[11px] font-medium flex items-center gap-1 border border-white/20 transition"
-                                          title={tr('Change cover image', 'Cambiar imagen de carátula')}
-                                        >
-                                          <ImagePlus className="w-3 h-3 text-sky-300" />
-                                          {sync.coverImage ? tr('Change', 'Cambiar') : tr('Cover', 'Carátula')}
-                                        </button>
-                                        {sync.coverImage && (
-                                          <button
-                                            type="button"
-                                            disabled={Boolean(busyAction)}
-                                            onClick={() => handleRemoveCoverForSync(sync)}
-                                            className="p-1 rounded-full bg-black/65 hover:bg-rose-600/80 backdrop-blur-md text-white border border-white/20 transition"
-                                            title={tr('Remove cover', 'Quitar carátula')}
-                                          >
-                                            <X className="w-3 h-3" />
-                                          </button>
                                         )}
                                       </div>
                                     </div>
@@ -2596,9 +2873,11 @@ export const App: React.FC = () => {
                                       <h3 className="text-base font-extrabold text-white truncate drop-shadow">
                                         {sync.name}
                                       </h3>
-                                      <p className="text-[11px] text-sky-300 font-mono truncate flex items-center gap-1">
-                                        <Cloud className="w-3 h-3 flex-shrink-0" />/{sync.driveFolderPath}
-                                      </p>
+                                      {!isGame && (
+                                        <p className="text-[11px] text-sky-300 font-mono truncate flex items-center gap-1">
+                                          <Cloud className="w-3 h-3 flex-shrink-0" />/{sync.driveFolderPath}
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
 
@@ -2626,52 +2905,7 @@ export const App: React.FC = () => {
                                       </div>
                                     </div>
 
-                                    {isLinked ? (
-                                      <div className="liquid-glass-sub rounded-2xl p-2.5 space-y-2">
-                                        <div className="flex items-center gap-1.5 text-xs min-w-0">
-                                          <HardDrive className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                                          <code className="liquid-text-secondary truncate font-mono text-[11px]">
-                                            {localMapping?.localPath}
-                                          </code>
-                                        </div>
-                                        <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/10">
-                                          <button
-                                            onClick={() => setEditingIgnoreSync(sync)}
-                                            disabled={Boolean(busyAction)}
-                                            className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 text-[11px] font-semibold flex items-center gap-1 transition"
-                                          >
-                                            <EyeOff className="w-3 h-3" />
-                                            {tr('Ignore', 'Ignorar')} ({effectiveIgnored.length})
-                                          </button>
-                                          <div className="flex items-center gap-1">
-                                            <button
-                                              onClick={() =>
-                                                window.syncApi.openLocalPath(localMapping!.localPath)
-                                              }
-                                              className="px-2 py-1 rounded-lg liquid-glass liquid-text-secondary text-[11px] hover:opacity-90"
-                                              title={tr('Open folder', 'Abrir carpeta')}
-                                            >
-                                              {tr('Open', 'Abrir')}
-                                            </button>
-                                            <button
-                                              onClick={() => handleAssignLocalFolderAndPull(sync, false)}
-                                              disabled={Boolean(busyAction)}
-                                              className="px-2 py-1 rounded-lg liquid-glass liquid-text-secondary text-[11px] hover:opacity-90"
-                                            >
-                                              {tr('Path', 'Ruta')}
-                                            </button>
-                                            <button
-                                              onClick={() => handleUnlinkLocal(sync)}
-                                              disabled={Boolean(busyAction)}
-                                              className="p-1 rounded-lg liquid-glass text-rose-400 hover:opacity-90"
-                                              title={tr('Unlink from this PC', 'Desvincular de esta PC')}
-                                            >
-                                              <Link2Off className="w-3 h-3" />
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ) : autoMatch ? (
+                                    {isLinked ? null : autoMatch ? (
                                       <div className="liquid-glass-sub rounded-2xl p-3 space-y-2 border border-emerald-400/35">
                                         <div className="flex items-center justify-between gap-1.5">
                                           <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
@@ -2810,12 +3044,12 @@ export const App: React.FC = () => {
                                   )}
 
                                   <button
-                                    onClick={() => handleDeleteSyncMetadata(sync)}
+                                    onClick={() => setEditingGameSyncId(sync.id)}
                                     disabled={Boolean(busyAction) || isThisBusy}
-                                    className="p-2.5 rounded-2xl liquid-glass-sub hover:bg-rose-500/20 liquid-text-muted hover:text-rose-400 transition ml-auto"
-                                    title="Eliminar metadata de sincronización"
+                                    className="p-2.5 rounded-2xl liquid-glass-sub hover:bg-sky-500/20 liquid-text-muted hover:text-sky-400 transition ml-auto"
+                                    title={isGame ? tr('Edit game', 'Editar juego') : tr('Edit sync', 'Editar sincronización')}
                                   >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Pencil className="w-4 h-4" />
                                   </button>
                                 </div>
                               </div>
@@ -2858,34 +3092,22 @@ export const App: React.FC = () => {
                               >
                                 <div className="flex flex-wrap items-start justify-between gap-4">
                                   {/* Cover Thumbnail on the left of the row */}
-                                  <div
-                                    onClick={() => !busyAction && handleChangeCoverForSync(sync)}
-                                    className="relative w-28 h-28 rounded-2xl overflow-hidden liquid-glass-sub flex-shrink-0 cursor-pointer group border border-white/15"
-                                    title="Haz clic para agregar o cambiar la carátula"
-                                  >
+                                  <div className="relative w-28 h-28 rounded-2xl overflow-hidden liquid-glass-sub flex-shrink-0 border border-white/15">
                                     {sync.coverImage ? (
                                       <img
                                         src={sync.coverImage}
                                         alt={sync.name}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                        className="w-full h-full object-cover"
                                       />
                                     ) : (
                                       <div className="w-full h-full flex flex-col items-center justify-center text-sky-400/75 gap-1">
                                         {isGame ? (
                                           <Gamepad2 className="w-6 h-6" />
                                         ) : (
-                                          <ImagePlus className="w-6 h-6" />
+                                          <FolderSync className="w-6 h-6" />
                                         )}
-                                        <span className="text-[10px] font-medium liquid-text-muted">
-                                          {tr('Cover', 'Carátula')}
-                                        </span>
                                       </div>
                                     )}
-                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                                      <span className="text-[10px] font-bold text-white px-2 py-1 rounded-lg bg-black/60">
-                                        {tr('Change', 'Cambiar')}
-                                      </span>
-                                    </div>
                                   </div>
 
                                   <div className="space-y-2 flex-1 min-w-[260px]">
@@ -2899,12 +3121,7 @@ export const App: React.FC = () => {
                                           {tr('Pending Pull', 'Pendiente de Pull')}
                                         </span>
                                       )}
-                                      {isLinked ? (
-                                        <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-400/30 flex items-center gap-1">
-                                          <Link2 className="w-3 h-3" />
-                                          {tr('Linked on this device', 'Vinculada en este dispositivo')}
-                                        </span>
-                                      ) : (
+                                      {!isLinked && (
                                         <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-400/30">
                                           {tr(`Available on ${pInfo.label} • No local path assigned`, `Disponible en ${pInfo.label} • Sin ruta local asignada`)}
                                         </span>
@@ -2918,19 +3135,21 @@ export const App: React.FC = () => {
                                     </div>
 
                                     {/* Metadata info badges */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
-                                      <div className="liquid-glass-sub rounded-2xl p-2.5">
-                                        <span className="liquid-text-muted block text-[11px]">
-                                          {tr(`Folder in ${pInfo.label}`, `Carpeta en ${pInfo.label}`)}
-                                        </span>
-                                        <span
-                                          className="text-sky-400 font-semibold font-mono flex items-center gap-1.5 mt-0.5 truncate"
-                                          title={`/${sync.driveFolderPath}`}
-                                        >
-                                          <Cloud className="w-3.5 h-3.5 flex-shrink-0" />/
-                                          {sync.driveFolderPath}
-                                        </span>
-                                      </div>
+                                    <div className={`grid grid-cols-1 ${isGame ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-2.5 pt-1 text-xs`}>
+                                      {!isGame && (
+                                        <div className="liquid-glass-sub rounded-2xl p-2.5">
+                                          <span className="liquid-text-muted block text-[11px]">
+                                            {tr(`Folder in ${pInfo.label}`, `Carpeta en ${pInfo.label}`)}
+                                          </span>
+                                          <span
+                                            className="text-sky-400 font-semibold font-mono flex items-center gap-1.5 mt-0.5 truncate"
+                                            title={`/${sync.driveFolderPath}`}
+                                          >
+                                            <Cloud className="w-3.5 h-3.5 flex-shrink-0" />/
+                                            {sync.driveFolderPath}
+                                          </span>
+                                        </div>
+                                      )}
 
                                       <div className="liquid-glass-sub rounded-2xl p-2.5">
                                         <span className="liquid-text-muted block text-[11px]">
@@ -2954,53 +3173,7 @@ export const App: React.FC = () => {
                                     </div>
 
                                     {/* Local folder section */}
-                                    {isLinked ? (
-                                      <div className="mt-3 p-3 rounded-2xl liquid-glass-sub flex flex-wrap items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2 text-xs min-w-0 flex-1">
-                                          <HardDrive className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                                          <span className="liquid-text-muted flex-shrink-0">
-                                            {tr('Path on this PC:', 'Ruta en esta PC:')}
-                                          </span>
-                                          <code className="liquid-text-primary truncate font-mono">
-                                            {localMapping?.localPath}
-                                          </code>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                          <button
-                                            onClick={() => setEditingIgnoreSync(sync)}
-                                            disabled={Boolean(busyAction)}
-                                            className="px-2.5 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/30 text-amber-400 text-xs font-semibold flex items-center gap-1 transition"
-                                          >
-                                            <EyeOff className="w-3.5 h-3.5" />
-                                            {tr('Ignore files', 'Ignorar archivos')} ({effectiveIgnored.length})
-                                          </button>
-                                          <button
-                                            onClick={() =>
-                                              window.syncApi.openLocalPath(localMapping!.localPath)
-                                            }
-                                            className="px-2.5 py-1 rounded-xl liquid-glass liquid-text-secondary text-xs flex items-center gap-1 transition hover:opacity-90"
-                                          >
-                                            <FolderOpen className="w-3.5 h-3.5" />
-                                            {tr('Open', 'Abrir')}
-                                          </button>
-                                          <button
-                                            onClick={() => handleAssignLocalFolderAndPull(sync, false)}
-                                            disabled={Boolean(busyAction)}
-                                            className="px-2.5 py-1 rounded-xl liquid-glass liquid-text-secondary text-xs transition hover:opacity-90"
-                                          >
-                                            {tr('Change path', 'Cambiar ruta')}
-                                          </button>
-                                          <button
-                                            onClick={() => handleUnlinkLocal(sync)}
-                                            disabled={Boolean(busyAction)}
-                                            className="p-1 rounded-xl liquid-glass text-rose-400 transition hover:opacity-90"
-                                            title={tr('Unlink folder on this device', 'Desvincular carpeta en este dispositivo')}
-                                          >
-                                            <Link2Off className="w-3.5 h-3.5" />
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ) : autoMatch ? (
+                                    {isLinked ? null : autoMatch ? (
                                       <div className="mt-3 p-3.5 rounded-2xl liquid-glass-sub border border-emerald-400/35 flex flex-wrap items-center justify-between gap-3">
                                         <div className="space-y-1 min-w-[220px] flex-1">
                                           <div className="flex items-center gap-2 flex-wrap">
@@ -3150,12 +3323,12 @@ export const App: React.FC = () => {
                                     )}
 
                                     <button
-                                      onClick={() => handleDeleteSyncMetadata(sync)}
+                                      onClick={() => setEditingGameSyncId(sync.id)}
                                       disabled={Boolean(busyAction) || isThisBusy}
-                                      className="p-2.5 rounded-2xl liquid-glass-sub hover:bg-rose-500/20 liquid-text-muted hover:text-rose-400 transition"
-                                      title="Eliminar metadata de sincronización"
+                                      className="p-2.5 rounded-2xl liquid-glass-sub hover:bg-sky-500/20 liquid-text-muted hover:text-sky-400 transition"
+                                      title={isGame ? tr('Edit game', 'Editar juego') : tr('Edit sync', 'Editar sincronización')}
                                     >
-                                      <Trash2 className="w-4 h-4" />
+                                      <Pencil className="w-4 h-4" />
                                     </button>
                                   </div>
                                 </div>
@@ -3172,6 +3345,7 @@ export const App: React.FC = () => {
           </div>
         )}
       </main>
+      </div>
 
       <CreateSyncModal
         isOpen={isCreateModalOpen}
