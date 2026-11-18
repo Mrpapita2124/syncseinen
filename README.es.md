@@ -18,7 +18,7 @@
 ### Apartado de Saves de Videojuegos y Emuladores
 ![Saves de Videojuegos y Emuladores](docs/screenshots/game-saves-dashboard.png)
 
-### Menú Sobrepuesto de Configuración y Servicios en la Nube
+### Apartado de Configuración
 ![Menú de Configuración](docs/screenshots/settings-menu.png)
 
 ---
@@ -59,6 +59,7 @@
 
 ## 🆕 Novedades Recientes
 
+- **v1.5.0:** Nueva barra lateral fija estilo Zen (**Syncs**, **Games**, **Sesiones** abajo a la izquierda y **Configuración** abajo a la derecha), tarjetas simplificadas con pantalla dedicada de edición (`✏️`), y vistas de Configuración y Sesiones extendidas a pantalla completa.
 - **v1.4.6:** Interfaz completa en inglés por defecto con selector de idioma en Configuración, y botones **Select all / Unselect all** (`Marcar todos / Desmarcar todos`) por ruta en el selector de archivos a ignorar.
 - **v1.4.5:** Al marcar una sincronización como videojuego, la carpeta en la nube se fija automáticamente en `/SyncSeinen_games_saves/<nombre>`.
 - **v1.4.4:** Permite seleccionar archivos a ignorar también en sincronizaciones manuales marcadas como videojuego.

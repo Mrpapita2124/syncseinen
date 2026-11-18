@@ -18,7 +18,7 @@
 ### Game & Emulator Saves Section
 ![Game & Emulator Saves](docs/screenshots/game-saves-dashboard.png)
 
-### Settings & Cloud Services Overlay Menu
+### Settings Section
 ![Settings Menu](docs/screenshots/settings-menu.png)
 
 ---
@@ -59,13 +59,12 @@
 
 ---
 
-## 🆕 What's New in v1.4.6
+## 🆕 What's New in v1.5.0
 
-- **English UI by default + Language Switcher:** Full English interface with an **English / Español** toggle in **Settings**.
-- **Select all / Unselect all in Ignore Files:** Quickly mark or unmark all items in the current folder when choosing ignored paths.
-- **Automatic game folder (`v1.4.5`):** Syncs marked as games automatically use `/SyncSeinen_games_saves/<name>` without manual folder selection.
-- **Ignore files on manual game syncs (`v1.4.4`):** You can now configure ignored files even when creating a manual sync marked as a game.
-- **Unified cross-platform updater (`v1.4.3`):** Releases include both `SyncSeinen-Portable.exe` (Windows) and `SyncSeinen-Linux.AppImage` (Linux).
+- **Zen-style Sidebar & Full-View Navigation:** Fixed left sidebar with **Syncs**, **Games**, bottom-left **Cloud Sessions** user button, and bottom-right **Settings** gear, plus a scrollable main content area.
+- **Cleaner Sync & Game Cards + Dedicated Edit Screen:** Cards now focus on **Last Push**, **Files / Date**, **Pull**, **Push**, and an **Edit** (`✏️`) button that opens a dedicated options screen (Local Path, Open, Path, Ignore, Unlink, Cover, and Delete).
+- **Streamlined Settings & Sessions:** Full-width stacked Settings (Close behavior, Visual theme, Language) and Cloud Sessions views.
+- **v1.4.6:** English UI by default with an **English / Español** toggle in **Settings**, plus **Select all / Unselect all** in Ignore Files.
 
 ---
 
