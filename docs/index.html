@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SyncSeinen &amp; Deck-Seinen — Multi-Cloud Save &amp; Folder Sync</title>
+    <meta
+      name="description"
+      content="Synchronize PC folders, game saves, and emulator saves across Windows, Linux, and Steam Deck (Decky Loader) using Google Drive, Dropbox, and OneDrive."
+    />
+    <link rel="icon" type="image/png" href="./app-icon.png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        background: radial-gradient(circle at 12% 10%, rgba(56, 189, 248, 0.16), transparent 36%),
+          radial-gradient(circle at 88% 18%, rgba(16, 185, 129, 0.14), transparent 34%),
+          radial-gradient(circle at 50% 85%, rgba(99, 102, 241, 0.16), transparent 40%),
+          #050814;
+        color: #f8fafc;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      .glass {
+        background: rgba(15, 23, 42, 0.62);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      }
+      .glass-sub {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+      }
+    </style>
+  </head>
+  <body class="min-h-screen antialiased selection:bg-sky-500/30 selection:text-white">
+    <!-- Top Navbar -->
+    <header class="sticky top-0 z-40 glass border-x-0 border-t-0">
+      <div class="max-w-6xl mx-auto px-5 py-3.5 flex items-center justify-between gap-4">
+        <a href="#top" class="flex items-center gap-3 min-w-0">
+          <img
+            src="./app-icon.png"
+            alt="SyncSeinen Logo"
+            class="w-9 h-9 rounded-xl object-cover border border-white/20 shadow"
+          />
+          <div class="min-w-0">
+            <span class="font-extrabold text-base tracking-tight text-white block leading-tight">
+              SyncSeinen <span class="text-sky-400 font-semibold">&amp;</span> Deck-Seinen
+            </span>
+            <span class="text-[11px] text-slate-400 block truncate" data-i18n="nav_sub">
+              PC • Linux • Steam Deck Cloud Sync
+            </span>
+          </div>
+        </a>
+
+        <nav class="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-300">
+          <a href="#downloads" class="hover:text-white transition" data-i18n="nav_downloads">Downloads</a>
+          <a href="#how-it-works" class="hover:text-white transition" data-i18n="nav_how">How It Works</a>
+          <a href="#ecosystem" class="hover:text-white transition" data-i18n="nav_ecosystem">PC ↔ Steam Deck</a>
+          <a href="#screenshots" class="hover:text-white transition" data-i18n="nav_screenshots">Screenshots</a>
+        </nav>
+
+        <div class="flex items-center gap-2">
+          <button
+            id="langToggle"
+            type="button"
+            class="px-3 py-1.5 rounded-xl glass-sub hover:bg-white/10 text-xs font-bold text-sky-300 transition cursor-pointer"
+          >
+            EN / ES
+          </button>
+          <a
+            href="#downloads"
+            class="px-4 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:to-emerald-400 text-white text-xs font-extrabold shadow-lg shadow-sky-500/20 transition"
+            data-i18n="nav_cta"
+          >
+            Download
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main id="top" class="max-w-6xl mx-auto px-5 py-12 space-y-24">
+      <!-- Hero -->
+      <section class="text-center space-y-7 pt-4">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-sub text-xs font-bold text-sky-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span data-i18n="hero_badge">Powered by rclone • Google Drive, Dropbox &amp; OneDrive</span>
+        </div>
+
+        <h1 class="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight text-white max-w-4xl mx-auto leading-[1.08]">
+          <span data-i18n="hero_title_1">Your folders &amp; game saves,</span>
+          <span class="bg-gradient-to-r from-sky-400 via-indigo-400 to-emerald-400 bg-clip-text text-transparent" data-i18n="hero_title_2">
+            synced between PC and Steam Deck.
+          </span>
+        </h1>
+
+        <p class="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed" data-i18n="hero_desc">
+          <strong>SyncSeinen</strong> (Windows &amp; Linux desktop app) and <strong>Deck-Seinen</strong> (Steam Deck Decky Loader plugin) work together using the exact same cloud metadata so you can pick up your progress on any device without losing a single save.
+        </p>
+
+        <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <a
+            href="#downloads"
+            class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 hover:from-indigo-400 hover:to-emerald-400 text-white text-sm font-extrabold shadow-xl shadow-sky-500/25 transition"
+            data-i18n="hero_btn_download"
+          >
+            Download App &amp; Plugin
+          </a>
+          <a
+            href="#ecosystem"
+            class="px-6 py-3.5 rounded-2xl glass hover:bg-white/10 text-slate-100 text-sm font-bold transition"
+            data-i18n="hero_btn_how"
+          >
+            See How They Connect
+          </a>
+        </div>
+      </section>
+
+      <!-- Downloads Section -->
+      <section id="downloads" class="space-y-8 scroll-mt-24">
+        <div class="text-center space-y-2">
+          <span class="text-[11px] font-extrabold uppercase tracking-[0.2em] text-sky-400" data-i18n="dl_eyebrow">
+            LATEST RELEASES
+          </span>
+          <h2 class="text-3xl font-black tracking-tight text-white" data-i18n="dl_title">
+            Download SyncSeinen &amp; Deck-Seinen
+          </h2>
+          <p class="text-sm text-slate-400 max-w-xl mx-auto" data-i18n="dl_sub">
+            Direct downloads fetched live from GitHub Releases. No installer needed on Windows, AppImage for Linux, and ZIP for Decky Loader.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- SyncSeinen Desktop Card -->
+          <div class="glass rounded-3xl p-7 flex flex-col justify-between space-y-6">
+            <div class="space-y-4">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <img
+                    src="./app-icon.png"
+                    alt="SyncSeinen"
+                    class="w-12 h-12 rounded-2xl object-cover border border-white/20 shadow"
+                  />
+                  <div>
+                    <h3 class="text-xl font-extrabold text-white">SyncSeinen</h3>
+                    <span class="text-xs text-sky-400 font-semibold" data-i18n="dl_pc_sub">
+                      Desktop App • Windows &amp; Linux
+                    </span>
+                  </div>
+                </div>
+                <span
+                  id="syncseinen-version"
+                  class="px-3 py-1 rounded-full bg-sky-500/15 border border-sky-400/40 text-sky-300 text-xs font-mono font-bold"
+                >
+                  v1.5.0
+                </span>
+              </div>
+
+              <p class="text-sm text-slate-300 leading-relaxed" data-i18n="dl_pc_desc">
+                Full desktop client with Zen sidebar, multi-cloud support, automatic PC &amp; emulator save scanner (Ludusavi, EmuAtlas, EmuVault), SteamGridDB &amp; online cover search, selective ignore rules, and system tray quick actions.
+              </p>
+            </div>
+
+            <div class="space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <a
+                  id="dl-win"
+                  href="https://github.com/Mrpapita2124/syncseinen/releases/latest/download/SyncSeinen-Portable.exe"
+                  class="px-4 py-3 rounded-2xl bg-sky-500/20 hover:bg-sky-500 border border-sky-400/40 text-sky-200 hover:text-white text-xs font-extrabold flex items-center justify-center gap-2 transition"
+                >
+                  <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3 5.5L10.5 4.4V11.5H3V5.5ZM11.5 4.2L21 2.8V11.5H11.5V4.2ZM3 12.5H10.5V19.6L3 18.5V12.5ZM11.5 12.5H21V21.2L11.5 19.8V12.5Z"/>
+                  </svg>
+                  <span data-i18n="dl_win_btn">Windows (.exe)</span>
+                </a>
+                <a
+                  id="dl-linux"
+                  href="https://github.com/Mrpapita2124/syncseinen/releases/latest/download/SyncSeinen-Linux.AppImage"
+                  class="px-4 py-3 rounded-2xl bg-indigo-500/20 hover:bg-indigo-500 border border-indigo-400/40 text-indigo-200 hover:text-white text-xs font-extrabold flex items-center justify-center gap-2 transition"
+                >
+                  <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+                  </svg>
+                  <span data-i18n="dl_linux_btn">Linux (.AppImage)</span>
+                </a>
+              </div>
+              <div class="flex items-center justify-between text-xs text-slate-400 pt-1">
+                <a
+                  href="https://github.com/Mrpapita2124/syncseinen"
+                  target="_blank"
+                  rel="noopener"
+                  class="hover:text-white underline"
+                >
+                  GitHub: Mrpapita2124/syncseinen
+                </a>
+                <a
+                  id="syncseinen-releases-link"
+                  href="https://github.com/Mrpapita2124/syncseinen/releases"
+                  target="_blank"
+                  rel="noopener"
+                  class="hover:text-sky-300"
+                  data-i18n="all_releases"
+                >
+                  All releases &rarr;
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Deck-Seinen Plugin Card -->
+          <div class="glass rounded-3xl p-7 flex flex-col justify-between space-y-6">
+            <div class="space-y-4">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center shadow">
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="2" y="6" width="20" height="12" rx="4"/>
+                      <path d="M6 12h4m-2-2v4m7-1h.01M17 11h.01"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-xl font-extrabold text-white">Deck-Seinen</h3>
+                    <span class="text-xs text-emerald-400 font-semibold" data-i18n="dl_deck_sub">
+                      Decky Loader Plugin • Steam Deck / SteamOS
+                    </span>
+                  </div>
+                </div>
+                <span
+                  id="deckseinen-version"
+                  class="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 text-xs font-mono font-bold"
+                >
+                  Latest
+                </span>
+              </div>
+
+              <p class="text-sm text-slate-300 leading-relaxed" data-i18n="dl_deck_desc">
+                Native Quick Access Menu plugin for Steam Deck Gaming Mode. Automatically detects Proton compatdata (SSD &amp; SD card), Steam userdata, EmuDeck, and Flatpak emulators so you can Pull &amp; Push saves without leaving your game.
+              </p>
+            </div>
+
+            <div class="space-y-3">
+              <a
+                id="dl-deck"
+                href="https://github.com/Mrpapita2124/Deck-Seinen/releases/latest/download/DeckSeinen-DeckyPlugin.zip"
+                class="w-full px-4 py-3 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500 border border-emerald-400/40 text-emerald-200 hover:text-slate-950 text-xs font-extrabold flex items-center justify-center gap-2 transition"
+              >
+                <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+                </svg>
+                <span data-i18n="dl_deck_btn">Steam Deck Plugin (DeckSeinen-DeckyPlugin.zip)</span>
+              </a>
+              <p class="text-[11px] text-slate-400" data-i18n="dl_deck_install">
+                Install via Decky Loader &rarr; Settings &rarr; Developer &rarr; Install Plugin from ZIP.
+              </p>
+              <div class="flex items-center justify-between text-xs text-slate-400 pt-1">
+                <a
+                  href="https://github.com/Mrpapita2124/Deck-Seinen"
+                  target="_blank"
+                  rel="noopener"
+                  class="hover:text-white underline"
+                >
+                  GitHub: Mrpapita2124/Deck-Seinen
+                </a>
+                <a
+                  id="deckseinen-releases-link"
+                  href="https://github.com/Mrpapita2124/Deck-Seinen/releases"
+                  target="_blank"
+                  rel="noopener"
+                  class="hover:text-emerald-300"
+                  data-i18n="all_releases"
+                >
+                  All releases &rarr;
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- How Each Works -->
+      <section id="how-it-works" class="space-y-8 scroll-mt-24">
+        <div class="text-center space-y-2">
+          <span class="text-[11px] font-extrabold uppercase tracking-[0.2em] text-indigo-400" data-i18n="how_eyebrow">
+            HOW THEY WORK
+          </span>
+          <h2 class="text-3xl font-black tracking-tight text-white" data-i18n="how_title">
+            Built for both Desktop &amp; Handheld
+          </h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- SyncSeinen Features -->
+          <div class="glass rounded-3xl p-7 space-y-5">
+            <div class="flex items-center gap-3">
+              <span class="px-3 py-1 rounded-xl bg-sky-500/20 text-sky-300 text-xs font-extrabold">
+                SyncSeinen (PC / Linux)
+              </span>
+            </div>
+            <ul class="space-y-3.5 text-sm text-slate-300">
+              <li class="flex gap-3">
+                <span class="text-sky-400 font-bold">01</span>
+                <span data-i18n="pc_f1"><strong>Multi-Cloud rclone Engine:</strong> Link Google Drive, Dropbox, and OneDrive simultaneously. Every provider has independent Pull / Push controls.</span>
+              </li>
+              <li class="flex gap-3">
+                <span class="text-sky-400 font-bold">02</span>
+                <span data-i18n="pc_f2"><strong>Automatic Save Detection:</strong> Scans PC games and 14+ emulators (Eden, Yuzu, Ryujinx, Cemu, Azahar, Dolphin, RetroArch, PCSX2, PPSSPP, RPCS3, etc.) and assigns SteamGridDB covers.</span>
+              </li>
+              <li class="flex gap-3">
+                <span class="text-sky-400 font-bold">03</span>
+                <span data-i18n="pc_f3"><strong>Regular Files + Selective Ignore:</strong> Sync any folder on your PC and exclude subfolders or files with Select all / Unselect all controls.</span>
+              </li>
+              <li class="flex gap-3">
+                <span class="text-sky-400 font-bold">04</span>
+                <span data-i18n="pc_f4"><strong>Clean v1.5.0 Interface:</strong> Zen-style sidebar, dedicated Edit screen per sync, 3 visual themes (Liquid Glass, Black &amp; Red, Material), and background system tray.</span>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Deck-Seinen Features -->
+          <div class="glass rounded-3xl p-7 space-y-5">
+            <div class="flex items-center gap-3">
+              <span class="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 text-xs font-extrabold">
+                Deck-Seinen (Steam Deck)
+              </span>
+            </div>
+            <ul class="space-y-3.5 text-sm text-slate-300">
+              <li class="flex gap-3">
+                <span class="text-emerald-400 font-bold">01</span>
+                <span data-i18n="deck_f1"><strong>Gaming Mode Native:</strong> Lives inside Decky Loader's Quick Access Menu with bundled Linux x86_64 rclone — no desktop mode needed after setup.</span>
+              </li>
+              <li class="flex gap-3">
+                <span class="text-emerald-400 font-bold">02</span>
+                <span data-i18n="deck_f2"><strong>Smart Proton &amp; EmuDeck Paths:</strong> Automatically finds save locations inside Steam compatdata (internal SSD &amp; SD card), userdata, and Flatpak/EmuDeck emulators.</span>
+              </li>
+              <li class="flex gap-3">
+                <span class="text-emerald-400 font-bold">03</span>
+                <span data-i18n="deck_f3"><strong>Real-time Pending Status:</strong> Highlights saves as <em>Pending</em> whenever another device pushed newer progress, and clears back to <em>Up to date</em> after Pull.</span>
+              </li>
+              <li class="flex gap-3">
+                <span class="text-emerald-400 font-bold">04</span>
+                <span data-i18n="deck_f4"><strong>Built-in File Explorer &amp; Manual Sync:</strong> Browse folders safely (read-only) to pick specific files or folders to upload from your Steam Deck.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Ecosystem: How They Work Together -->
+      <section id="ecosystem" class="glass rounded-3xl p-7 sm:p-10 space-y-8 scroll-mt-24">
+        <div class="text-center space-y-2 max-w-2xl mx-auto">
+          <span class="text-[11px] font-extrabold uppercase tracking-[0.2em] text-emerald-400" data-i18n="eco_eyebrow">
+            SEAMLESS CROSS-DEVICE WORKFLOW
+          </span>
+          <h2 class="text-3xl font-black tracking-tight text-white" data-i18n="eco_title">
+            How SyncSeinen &amp; Deck-Seinen Work Together
+          </h2>
+          <p class="text-sm text-slate-300" data-i18n="eco_sub">
+            Both apps read and write the exact same <code class="text-sky-300 font-mono">_SyncSeinen_Metadata</code> JSON files and <code class="text-emerald-300 font-mono">SyncSeinen_games_saves</code> folder in your cloud drive.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div class="glass-sub rounded-2xl p-5 space-y-2.5">
+            <span class="inline-block px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 text-xs font-extrabold">
+              1. PC &rarr; Cloud (Push)
+            </span>
+            <h3 class="font-bold text-white text-base" data-i18n="eco_s1_t">Play &amp; Push on PC</h3>
+            <p class="text-xs text-slate-300 leading-relaxed" data-i18n="eco_s1_d">
+              SyncSeinen uploads your save to <code class="text-sky-300 font-mono">/SyncSeinen_games_saves/&lt;Game&gt;</code> and stamps your device name and timestamp into <code class="text-sky-300 font-mono">_SyncSeinen_Metadata</code>.
+            </p>
+          </div>
+
+          <div class="glass-sub rounded-2xl p-5 space-y-2.5">
+            <span class="inline-block px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-xs font-extrabold">
+              2. Cloud &rarr; Steam Deck (Pull)
+            </span>
+            <h3 class="font-bold text-white text-base" data-i18n="eco_s2_t">Detect &amp; Pull on Deck</h3>
+            <p class="text-xs text-slate-300 leading-relaxed" data-i18n="eco_s2_d">
+              Deck-Seinen reads the cloud metadata, flags the game as <strong>Pending</strong>, automatically matches your Proton <code class="text-indigo-300 font-mono">compatdata</code> or emulator folder, and downloads your save.
+            </p>
+          </div>
+
+          <div class="glass-sub rounded-2xl p-5 space-y-2.5">
+            <span class="inline-block px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-extrabold">
+              3. Steam Deck &rarr; PC (Sync Back)
+            </span>
+            <h3 class="font-bold text-white text-base" data-i18n="eco_s3_t">Push Back &amp; Continue</h3>
+            <p class="text-xs text-slate-300 leading-relaxed" data-i18n="eco_s3_d">
+              When you finish playing on Steam Deck, press <strong>Push</strong> in Decky. Back on your PC, SyncSeinen automatically surfaces it as <strong>Pending Pull</strong> so your progress stays in sync.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Screenshots -->
+      <section id="screenshots" class="space-y-8 scroll-mt-24">
+        <div class="text-center space-y-2">
+          <span class="text-[11px] font-extrabold uppercase tracking-[0.2em] text-sky-400" data-i18n="scr_eyebrow">
+            INTERFACE PREVIEW
+          </span>
+          <h2 class="text-3xl font-black tracking-tight text-white" data-i18n="scr_title">
+            Inside SyncSeinen v1.5.0
+          </h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <figure class="glass rounded-2xl overflow-hidden flex flex-col">
+            <img src="./screenshots/dashboard.png" alt="SyncSeinen Dashboard" class="w-full h-52 object-cover object-top" />
+            <figcaption class="p-4 text-xs font-bold text-slate-200" data-i18n="scr_1">
+              Zen Sidebar &amp; Regular Files Dashboard
+            </figcaption>
+          </figure>
+          <figure class="glass rounded-2xl overflow-hidden flex flex-col">
+            <img src="./screenshots/game-saves-dashboard.png" alt="SyncSeinen Game Saves" class="w-full h-52 object-cover object-top" />
+            <figcaption class="p-4 text-xs font-bold text-slate-200" data-i18n="scr_2">
+              Game &amp; Emulator Saves View
+            </figcaption>
+          </figure>
+          <figure class="glass rounded-2xl overflow-hidden flex flex-col">
+            <img src="./screenshots/settings-menu.png" alt="SyncSeinen Settings" class="w-full h-52 object-cover object-top" />
+            <figcaption class="p-4 text-xs font-bold text-slate-200" data-i18n="scr_3">
+              Full-View Settings &amp; Theme Selector
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-white/10 mt-16 py-8">
+      <div class="max-w-6xl mx-auto px-5 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
+        <span>SyncSeinen &amp; Deck-Seinen &bull; Open Source Multi-Cloud Sync</span>
+        <div class="flex items-center gap-4">
+          <a href="https://github.com/Mrpapita2124/syncseinen" target="_blank" rel="noopener" class="hover:text-white">
+            SyncSeinen Repo
+          </a>
+          <a href="https://github.com/Mrpapita2124/Deck-Seinen" target="_blank" rel="noopener" class="hover:text-white">
+            Deck-Seinen Repo
+          </a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      const TRANSLATIONS = {
+        es: {
+          nav_sub: 'Sincronización en la nube PC • Linux • Steam Deck',
+          nav_downloads: 'Descargas',
+          nav_how: 'Cómo Funciona',
+          nav_ecosystem: 'PC ↔ Steam Deck',
+          nav_screenshots: 'Capturas',
+          nav_cta: 'Descargar',
+          hero_badge: 'Impulsado por rclone • Google Drive, Dropbox y OneDrive',
+          hero_title_1: 'Tus carpetas y partidas,',
+          hero_title_2: 'sincronizadas entre PC y Steam Deck.',
+          hero_desc:
+            '<strong>SyncSeinen</strong> (app de escritorio para Windows y Linux) y <strong>Deck-Seinen</strong> (plugin de Decky Loader para Steam Deck) comparten exactamente la misma metadata en la nube para continuar tu progreso en cualquier dispositivo.',
+          hero_btn_download: 'Descargar App y Plugin',
+          hero_btn_how: 'Ver Cómo se Conectan',
+          dl_eyebrow: 'ÚLTIMAS VERSIONES',
+          dl_title: 'Descargar SyncSeinen y Deck-Seinen',
+          dl_sub:
+            'Descargas directas desde GitHub Releases. Ejecutable portable para Windows, AppImage para Linux y ZIP para Decky Loader.',
+          dl_pc_sub: 'Aplicación de Escritorio • Windows y Linux',
+          dl_pc_desc:
+            'Cliente completo con barra lateral estilo Zen, soporte multi-nube, escáner automático de saves de PC y emuladores (Ludusavi, EmuAtlas, EmuVault), carátulas con SteamGridDB y buscador online, reglas para ignorar archivos y bandeja del sistema.',
+          dl_win_btn: 'Windows (.exe)',
+          dl_linux_btn: 'Linux (.AppImage)',
+          dl_deck_sub: 'Plugin de Decky Loader • Steam Deck / SteamOS',
+          dl_deck_desc:
+            'Plugin nativo para el Menú de Acceso Rápido en Modo Juego. Detecta automáticamente compatdata de Proton (SSD y SD), Steam userdata, EmuDeck y emuladores Flatpak para hacer Pull y Push sin salir del juego.',
+          dl_deck_btn: 'Plugin Steam Deck (DeckSeinen-DeckyPlugin.zip)',
+          dl_deck_install:
+            'Instala desde Decky Loader → Ajustes → Desarrollador → Instalar plugin desde ZIP.',
+          all_releases: 'Todas las versiones →',
+          how_eyebrow: 'CÓMO FUNCIONAN',
+          how_title: 'Diseñados para Escritorio y Portátil',
+          pc_f1:
+            '<strong>Motor rclone Multi-Nube:</strong> Vincula Google Drive, Dropbox y OneDrive al mismo tiempo con botones independientes de Pull y Push por servicio.',
+          pc_f2:
+            '<strong>Detección Automática de Saves:</strong> Escanea juegos de PC y más de 14 emuladores (Eden, Yuzu, Ryujinx, Cemu, Azahar, Dolphin, RetroArch, PCSX2, PPSSPP, RPCS3, etc.) con carátulas de SteamGridDB.',
+          pc_f3:
+            '<strong>Archivos Normales e Ignorar Selectivo:</strong> Sincroniza cualquier carpeta de tu PC y excluye archivos o subcarpetas con botones de Marcar / Desmarcar todos.',
+          pc_f4:
+            '<strong>Interfaz Limpia v1.5.0:</strong> Barra lateral estilo Zen, pantalla dedicada de edición por elemento, 3 temas visuales (Liquid Glass, Black & Red, Material) y ejecución en bandeja.',
+          deck_f1:
+            '<strong>Nativo en Modo Juego:</strong> Vive dentro del Menú de Acceso Rápido de Decky Loader con rclone Linux x86_64 incluido.',
+          deck_f2:
+            '<strong>Rutas Inteligentes de Proton y EmuDeck:</strong> Encuentra automáticamente saves en compatdata de Steam (SSD interno y tarjeta SD), userdata y emuladores Flatpak/EmuDeck.',
+          deck_f3:
+            '<strong>Estado Pendiente en Tiempo Real:</strong> Marca las partidas como <em>Pendiente</em> cuando otro dispositivo subió progreso nuevo y pasa a <em>Al día</em> al hacer Pull.',
+          deck_f4:
+            '<strong>Explorador Integrado de Solo Lectura:</strong> Navega carpetas de forma segura para elegir archivos o carpetas específicas y subirlas desde la Steam Deck.',
+          eco_eyebrow: 'FLUJO ENTRE DISPOSITIVOS',
+          eco_title: 'Cómo Trabajan Juntos SyncSeinen y Deck-Seinen',
+          eco_sub:
+            'Ambos proyectos leen y escriben los mismos archivos JSON en <code class="text-sky-300 font-mono">_SyncSeinen_Metadata</code> y la carpeta <code class="text-emerald-300 font-mono">SyncSeinen_games_saves</code> en tu nube.',
+          eco_s1_t: 'Juega y haz Push en PC',
+          eco_s1_d:
+            'SyncSeinen sube tu partida a <code class="text-sky-300 font-mono">/SyncSeinen_games_saves/&lt;Juego&gt;</code> y registra el dispositivo y fecha en <code class="text-sky-300 font-mono">_SyncSeinen_Metadata</code>.',
+          eco_s2_t: 'Detecta y haz Pull en Deck',
+          eco_s2_d:
+            'Deck-Seinen lee la metadata, marca el juego como <strong>Pendiente</strong>, detecta automáticamente tu carpeta de Proton <code class="text-indigo-300 font-mono">compatdata</code> o emulador y descarga tu partida.',
+          eco_s3_t: 'Sube de vuelta y continúa',
+          eco_s3_d:
+            'Al terminar en la Steam Deck, pulsa <strong>Push</strong> en Decky. Al volver a tu PC, SyncSeinen lo resaltará como <strong>Pendiente de Pull</strong> para mantener todo sincronizado.',
+          scr_eyebrow: 'VISTA PREVIA',
+          scr_title: 'Por dentro de SyncSeinen v1.5.0',
+          scr_1: 'Barra lateral estilo Zen y Archivos Normales',
+          scr_2: 'Apartado de Saves de Videojuegos y Emuladores',
+          scr_3: 'Configuración extendida y Selector de Temas',
+        },
+      }
+
+      const defaultEn = {}
+      document.querySelectorAll('[data-i18n]').forEach((el) => {
+        defaultEn[el.getAttribute('data-i18n')] = el.innerHTML
+      })
+
+      let currentLang = navigator.language && navigator.language.toLowerCase().startsWith('es') ? 'es' : 'en'
+      const applyLang = (lang) => {
+        currentLang = lang
+        document.documentElement.lang = lang
+        document.querySelectorAll('[data-i18n]').forEach((el) => {
+          const key = el.getAttribute('data-i18n')
+          el.innerHTML = lang === 'es' ? TRANSLATIONS.es[key] || defaultEn[key] : defaultEn[key]
+        })
+        document.getElementById('langToggle').textContent = lang === 'es' ? 'ES / EN' : 'EN / ES'
+      }
+      applyLang(currentLang)
+      document.getElementById('langToggle').addEventListener('click', () => {
+        applyLang(currentLang === 'en' ? 'es' : 'en')
+      })
+
+      // Fetch latest releases from GitHub API for direct asset links & versions
+      async function hydrateRelease(repo, versionElId, assetMap, releasesLinkId) {
+        try {
+          const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`)
+          if (!res.ok) return
+          const rel = await res.json()
+          if (rel.tag_name) {
+            document.getElementById(versionElId).textContent = rel.tag_name
+          }
+          if (rel.html_url && releasesLinkId) {
+            document.getElementById(releasesLinkId).href = rel.html_url
+          }
+          if (Array.isArray(rel.assets)) {
+            for (const [elId, matcher] of Object.entries(assetMap)) {
+              const found = rel.assets.find((a) => a.name && a.name.toLowerCase().includes(matcher))
+              if (found && found.browser_download_url) {
+                document.getElementById(elId).href = found.browser_download_url
+              }
+            }
+          }
+        } catch {
+          // Keep static /releases/latest/download/... fallback URLs
+        }
+      }
+
+      hydrateRelease(
+        'Mrpapita2124/syncseinen',
+        'syncseinen-version',
+        { 'dl-win': '.exe', 'dl-linux': '.appimage' },
+        'syncseinen-releases-link'
+      )
+      hydrateRelease(
+        'Mrpapita2124/Deck-Seinen',
+        'deckseinen-version',
+        { 'dl-deck': '.zip' },
+        'deckseinen-releases-link'
+      )
+    </script>
+  </body>
+</html>
